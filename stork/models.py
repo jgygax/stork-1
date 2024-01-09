@@ -209,6 +209,7 @@ class RecurrentSpikingModel(nn.Module):
         for c in self.connections:
             c.remove_regularizers()
 
+    # TODO: add option to do online learning (e.g. on each time step consider the current loss)
     def run(self, x_batch, cur_batch_size=None, record=False):
         if cur_batch_size is None:
             cur_batch_size = len(x_batch)
@@ -251,7 +252,6 @@ class RecurrentSpikingModel(nn.Module):
         return total_loss
 
     def evaluate(self, test_dataset, train_mode=False, one_batch=False):
-        print("using first evaluate")
         self.train(train_mode)
         self.prepare_data(test_dataset)
         metrics = []
@@ -557,6 +557,21 @@ class RecurrentSpikingModel(nn.Module):
                                     "annealed",
                                     self.groups[g].act_fn.surrogate_params["beta"],
                                 )
+                                if "beta" in self.groups[g].act_fn.escape_noise_params:
+                                    beta = self.groups[g].act_fn.escape_noise_params[
+                                        "beta"
+                                    ]
+                                    print("noise beta", beta)
+                                    self.groups[g].act_fn.escape_noise_params[
+                                        "beta"
+                                    ] = (beta + self.anneal_step)
+                                    self.groups[g].spk_nl = self.groups[g].act_fn.apply
+                                    print(
+                                        "annealed noise params",
+                                        self.groups[g].act_fn.escape_noise_params[
+                                            "beta"
+                                        ],
+                                    )
                             except:
                                 beta = self.groups[g].act_fn.beta
                                 print("beta", beta)
@@ -929,7 +944,6 @@ class DoubleInputRecSpikingModel(RecurrentSpikingModel):
         return np.mean(np.array(metrics), axis=0)
 
     def evaluate(self, dataset, train_mode=False, one_batch=False):
-        print("using second evaluate")
         self.train(train_mode)
         # self.prepare_data(test_dataset)
         metrics = []
