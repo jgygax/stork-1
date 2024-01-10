@@ -632,7 +632,7 @@ class RecurrentSpikingModel(nn.Module):
         self.prepare_data(dataset)
 
         # Prepare a list for each monitor to hold the batches
-        results = [[] for _ in self.monitors]
+        results = {mon.key + "-" + str(mon.group.name): [] for mon in self.monitors}
         for local_X, local_y in self.data_generator(dataset, shuffle=False):
             for m in self.monitors:
                 m.reset()
@@ -642,9 +642,11 @@ class RecurrentSpikingModel(nn.Module):
             )
 
             for k, mon in enumerate(self.monitors):
-                results[k].append(mon.get_data())
+                results[mon.key + "-" + str(mon.group.name)].append(mon.get_data())
 
-        return [torch.cat(res, dim=0) for res in results]
+        for k, v in results.items():
+            results[k] = torch.cat(v, dim=0)
+        return results  # [torch.cat(res, dim=0) for res in results]
 
     def monitor_backward(self, dataset):
         """

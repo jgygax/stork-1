@@ -147,6 +147,7 @@ class CellGroup(core.NetworkNode):
         return self.get_state_sequence("out").reshape(self.flat_seq_shape)
 
     def get_firing_rates(self):
+        # TODO: seems incorrect for convolutional networks...
         tmp = self.get_out_sequence()
         rates = torch.mean(tmp, dim=1) / self.time_step  # Average over time
         return rates
