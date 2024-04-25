@@ -95,11 +95,56 @@ def turn_axis_off(ax):
     ax.spines["top"].set_visible(False)
 
 
-def plot_activity_snapshot(
+def plot_activity_over_trials(
     model,
     data,
-    nb_samples=5,
-    figsize=(10, 5),
+    ax,
+    layer_idx=0,
+    neuron_idx=0,
+    nb_trials=51,
+    marker=".",
+    point_size=5,
+    point_alpha=1,
+    color="black",
+    nolabel=False,
+):
+    # Run model once and get activities
+    scores = model.evaluate(data, one_batch=True).tolist()
+
+    hidden_groups = model.groups[1:-1]
+    hid_activity = [
+        g.get_flattened_out_sequence().detach().cpu().numpy() for g in hidden_groups
+    ]
+
+    nb_trials = np.min((nb_trials, hid_activity[layer_idx].shape[0]))
+
+    act = hid_activity[layer_idx][:, :, neuron_idx]
+    for i in range(nb_trials):
+        spikes = np.where(act[i])[0]
+        ax.scatter(
+            spikes,
+            np.ones_like(spikes) * i,
+            color=color,
+            alpha=point_alpha,
+            marker=marker,
+            s=point_size,
+        )
+
+    if not nolabel:
+        ax.set_ylabel("Trial idx")
+        ax.set_xlabel("Time (ms)")
+    ax.set_xlim(-3, model.nb_time_steps + 3)
+    ax.set_ylim(-3, nb_trials + 3)
+    ax.set_xticks([0, model.nb_time_steps])
+    ax.set_yticks([0, nb_trials - 1])
+    sns.despine()
+
+
+def plot_activity(
+    model,
+    data,
+    nb_samples=2,
+    figsize=(5, 5),
     dpi=250,
     marker=".",
     point_size=5,
@@ -108,6 +153,8 @@ def plot_activity_snapshot(
     bg_col="#AAAAAA",
     bg_col2="#DDDDDD",
     double=False,
+    pos=(0, 0),
+    off=(0, -0.05),
 ):
     # Run model once and get activities
     scores = model.evaluate(data, one_batch=True).tolist()
@@ -131,11 +178,164 @@ def plot_activity_snapshot(
         inps = [inp1, inp2]
     else:
         inps = [inp]
-        data = [data]
 
     nb_groups = len(hidden_groups)
     nb_total_units = np.sum([g.nb_units for g in hidden_groups])
     hr = [1] + [4 * g.nb_units / nb_total_units for g in hidden_groups] + [1]
+    hr = list(reversed(hr))  # since we are plotting from bottom to top
+
+    fig, ax = plt.subplots(
+        nb_groups + 2,
+        nb_samples,
+        figsize=figsize,
+        dpi=dpi,
+        sharex="row",
+        sharey="row",
+        gridspec_kw={"height_ratios": hr},
+    )
+
+    sns.despine()
+
+    samples = []
+    if double:
+        raise NotImplementedError("Double not implemented yet")
+    else:
+        label = 0
+        while len(samples) < nb_samples:
+            for i in range(len(data)):
+                if data[i][1] == label:
+                    label += 1
+                    samples.append(i)
+                    break
+
+    for i, s in enumerate(samples):
+        # plot and color input spikes
+        label = 0
+        for idx, inp in enumerate(inps):
+            if double:
+                c = pal[i + idx * m]
+            else:
+                c = pal[i]
+
+            ax[-1][i].scatter(
+                np.where(inp[s])[0],
+                np.where(inp[s])[1] + idx * n,
+                s=point_size,
+                marker=marker,
+                color=c,
+                alpha=point_alpha,
+            )
+        ax[-1][i].set_ylim(-3, model.nb_inputs + 3)
+        ax[-1][i].set_xlim(-3, model.nb_time_steps + 3)
+
+        if i != 0:
+            ax[-1][i].set_yticks([])
+            ax[-1][i].spines["left"].set_visible(False)
+            ax[-1][i].spines["right"].set_visible(False)
+            ax[-1][i].spines["top"].set_visible(False)
+
+        # plot hidden layer spikes
+        for g in range(nb_groups):
+            ax[-(2 + g)][i].scatter(
+                np.where(hid_activity[g][s])[0],
+                np.where(hid_activity[g][s])[1],
+                s=point_size / 2,
+                marker=marker,
+                color="k",
+                alpha=point_alpha,
+            )
+
+            ax[-(2 + g)][0].set_ylabel("Hid. " + str(g))
+            # turn off x-axis
+            ax[-(2 + g)][i].set_xticks([])
+            ax[-(2 + g)][i].set_yticks([])
+            ax[-(2 + g)][i].spines["bottom"].set_visible(False)
+            ax[-(2 + g)][i].set_xlim(-3, model.nb_time_steps + 3)
+
+            if i != 0:
+                turn_axis_off(ax[-(2 + g)][i])
+
+        for line_index, ro_line in enumerate(np.transpose(out_group[i])):
+            if double:
+                if line_index == data[0][s][1] or line_index == data[1][s][1] + m:
+                    ax[0][i].plot(ro_line, color=pal[i])
+                else:
+                    if line_index < m:
+                        ax[0][i].plot(ro_line, color=bg_col, zorder=-5, alpha=0.5)
+                    else:
+                        ax[0][i].plot(ro_line, color=bg_col2, zorder=-5, alpha=0.5)
+            else:
+                c = bg_col
+                alpha = 0.5
+                zorder = -5
+                for j, sidx in enumerate(samples):
+                    if line_index == data[sidx][1]:
+                        c = pal[j]
+                        alpha = 1
+                        zorder = 1
+                ax[0][i].plot(ro_line, color=c, zorder=zorder, alpha=alpha)
+
+        ax[-1][i].set_xlabel("Time (ms)")
+        if i != 0:
+            turn_axis_off(ax[0][i])
+
+    ax[0][0].set_xticks([])
+    ax[0][0].spines["bottom"].set_visible(False)
+
+    ax[-1][0].set_ylabel("Input")
+    ax[0][0].set_ylabel("Readout")
+    ax[-1][0].set_yticks([])
+    ax[0][0].set_yticks([])
+
+    duration = round(model.nb_time_steps * model.time_step * 10) / 10
+    ax[-1][0].set_xticks([0, model.nb_time_steps], [0, duration])
+
+    plt.tight_layout()
+
+
+def plot_activity_snapshot(
+    model,
+    data,
+    nb_samples=5,
+    figsize=(10, 5),
+    dpi=250,
+    marker=".",
+    point_size=5,
+    point_alpha=1,
+    pal=sns.color_palette("muted", n_colors=20),
+    bg_col="#AAAAAA",
+    bg_col2="#DDDDDD",
+    double=False,
+    pos=(0, 0),
+    off=(0, -0.05),
+):
+    # Run model once and get activities
+    scores = model.evaluate(data, one_batch=True).tolist()
+
+    inp = model.input_group.get_flattened_out_sequence().detach().cpu().numpy()
+    hidden_groups = model.groups[1:-1]
+    hid_activity = [
+        g.get_flattened_out_sequence().detach().cpu().numpy() for g in hidden_groups
+    ]
+    out_group = model.out.detach().cpu().numpy()
+
+    n = model.nb_inputs
+    m = out_group.shape[-1]
+    if double:
+        n = n // 2
+        m = m // 2
+
+    if double:
+        inp1 = inp[:, :, :n]
+        inp2 = inp[:, :, n:]
+        inps = [inp1, inp2]
+    else:
+        inps = [inp]
+
+    nb_groups = len(hidden_groups)
+    nb_total_units = np.sum([g.nb_units for g in hidden_groups])
+    hr = [1] + [4 * g.nb_units / nb_total_units for g in hidden_groups] + [1]
+    hr = list(reversed(hr))  # since we are plotting from bottom to top
 
     fig, ax = plt.subplots(
         nb_groups + 2,
@@ -150,15 +350,20 @@ def plot_activity_snapshot(
     for i in range(nb_samples):
         # plot and color input spikes
         for idx, inp in enumerate(inps):
+            if double:
+                c = pal[data[idx][i][1] + idx * m]
+            else:
+                c = pal[data[i][1]]
             ax[-1][i].scatter(
                 np.where(inp[i])[0],
                 np.where(inp[i])[1] + idx * n,
                 s=point_size,
                 marker=marker,
-                color=pal[data[idx][i][1] + idx * m],
+                color=c,
+                alpha=point_alpha,
             )
-        ax[-1][i].set_ylim(-1, model.nb_inputs)
-        ax[-1][i].set_xlim(-1, model.nb_time_steps)
+        ax[-1][i].set_ylim(-3, model.nb_inputs + 3)
+        ax[-1][i].set_xlim(-3, model.nb_time_steps + 3)
         turn_axis_off(ax[-1][i])
 
         # plot hidden layer spikes
@@ -176,19 +381,29 @@ def plot_activity_snapshot(
             ax[-(2 + g)][0].set_ylabel("Hid. " + str(g))
 
         for line_index, ro_line in enumerate(np.transpose(out_group[i])):
-            for d in range(len(data)):
-                if line_index == data[d][i][1] or line_index == data[d][i][1] + m:
+            if double:
+                if line_index == data[0][i][1] or line_index == data[1][i][1] + m:
                     ax[0][i].plot(ro_line, color=pal[line_index])
-            else:
-                if line_index < m:
-                    ax[0][i].plot(ro_line, color=bg_col, zorder=-5, alpha=0.5)
                 else:
-                    ax[0][i].plot(ro_line, color=bg_col2, zorder=-5, alpha=0.5)
+                    if line_index < m:
+                        ax[0][i].plot(ro_line, color=bg_col, zorder=-5, alpha=0.5)
+                    else:
+                        ax[0][i].plot(ro_line, color=bg_col2, zorder=-5, alpha=0.5)
+            else:
+                if line_index == data[i][1]:
+                    ax[0][i].plot(ro_line, color=pal[line_index])
+                else:
+                    ax[0][i].plot(ro_line, color=bg_col, zorder=-5, alpha=0.5)
 
             turn_axis_off(ax[0][i])
 
+    dur_10 = 10e-3 / model.time_step
+    # print(dur_10)
+    add_xscalebar(ax[-1][0], dur_10, label="10ms", pos=pos, off=off, fontsize=8)
+
     ax[-1][0].set_ylabel("Input")
     ax[0][0].set_ylabel("Readout")
+    plt.tight_layout()
 
 
 def plot_activity_snapshot_old(
@@ -208,8 +423,7 @@ def plot_activity_snapshot_old(
     show_input_class=True,
     input_heatmap=False,
     pal=None,
-    n_colors=None,
-    double_data=False,
+    n_colors=20,
 ):
     """Plot an activity snapshot
 
@@ -240,14 +454,9 @@ def plot_activity_snapshot_old(
         else:
             labels = [d[1] for d in data]
 
-    # compute batch sizes and size of last batch
-    if double_data:
-        l_data = len(data[0])
-    else:
-        l_data = len(data)
-    nb_batches = l_data // model.batch_size
-    if l_data // model.batch_size < l_data / model.batch_size:
-        size_of_last_batch = l_data - nb_batches * model.batch_size
+    nb_batches = len(data) // model.batch_size
+    if len(data) // model.batch_size < len(data) / model.batch_size:
+        size_of_last_batch = len(data) - nb_batches * model.batch_size
         nb_batches += 1
     else:
         size_of_last_batch = model.batch_size
@@ -288,8 +497,6 @@ def plot_activity_snapshot_old(
         np.random.shuffle(idx)
 
     text_props = {"ha": "center", "va": "center", "fontsize": 8}
-
-    # loop over all samples
     for i in range(nb_samples):
         if i == 0:
             a0 = ax = plt.subplot(gs[i + (nb_groups + 1) * nb_samples])
@@ -322,43 +529,23 @@ def plot_activity_snapshot_old(
         # Colored input class
         if show_input_class and data is not None:
             clipped = np.clip(labels, 0, len(pal) - 1)
-            if double_data:
-                color0 = pal[int(clipped[k][0])]
-                color1 = pal[int(clipped[k][1]) + n_colors // 2]
-            else:
-                color = pal[int(clipped[k])]
+            color = pal[int(clipped[k])]
         else:
             color = "black"
             color0 = "black"
             color1 = "black"
 
         if not input_heatmap:
-            if double_data:
-                double_dense2scatter_plot(
-                    ax,
-                    in_group[k],
-                    marker=marker,
-                    point_size=point_size,
-                    alpha=point_alpha,
-                    time_step=time_step,
-                    color0=color0,
-                    color1=color1,
-                    jitter=time_jitter,
-                )
-            else:
-                dense2scatter_plot(
-                    ax,
-                    in_group[k],
-                    marker=marker,
-                    point_size=point_size,
-                    alpha=point_alpha,
-                    time_step=time_step,
-                    color=color,
-                    jitter=time_jitter,
-                )
-
-            ax.set_ylim(-1, model.input_group.nb_units)
-            ax.set_xlim(0, model.nb_time_steps * time_step)
+            dense2scatter_plot(
+                ax,
+                in_group[k],
+                marker=marker,
+                point_size=point_size,
+                alpha=point_alpha,
+                time_step=time_step,
+                color_list=[color],
+                jitter=time_jitter,
+            )
         else:
             shape = in_group[k].shape
             ax.imshow(
@@ -392,7 +579,7 @@ def plot_activity_snapshot_old(
                 point_size=point_size,
                 alpha=point_alpha,
                 time_step=time_step,
-                color="black",
+                # color="black",
                 jitter=time_jitter,
             )
             ax.axis("off")
@@ -434,18 +621,9 @@ def plot_activity_snapshot_old(
 
         for line_index, ro_line in enumerate(np.transpose(out_group[k])):
             if labels is not None:
-                if double_data:
-                    if line_index != int(labels[k][0]) and line_index != int(
-                        labels[k][1] + n_colors // 2
-                    ):
-                        if line_index < n_colors // 2:
-                            color = "#BBBBBB"
-                        else:
-                            color = "#DDDDDD"
-                        zorder = 5
-                    else:
-                        color = pal[line_index]
-                        zorder = 10
+                if line_index != int(labels[k]):
+                    color = "#DDDDDD"
+                    zorder = 5
                 else:
                     if line_index != int(labels[k]):
                         color = "#DDDDDD"
