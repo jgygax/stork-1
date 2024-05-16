@@ -364,7 +364,7 @@ def plot_activity_snapshot(
             )
             turn_axis_off(ax[-(2 + g)][i])
 
-            ax[-(2 + g)][0].set_ylabel("Hid. " + str(g))
+            ax[-(2 + g)][0].set_ylabel(hidden_groups[g].name if hidden_groups[g].name is not None else "Hid. %i" % g)
 
         for line_index, ro_line in enumerate(np.transpose(out_group[i])):
             if double:
@@ -630,3 +630,77 @@ def plot_activity_snapshot_old(
 
     plt.tight_layout()
     sns.despine()
+
+
+
+def plot_input(
+    model,
+    data,
+    nb_samples=2,
+    figsize=(5, 5),
+    dpi=250,
+    marker=".",
+    point_size=5,
+    point_alpha=1,
+    pal=sns.color_palette("muted", n_colors=20),
+):
+    # Run model once and get activities
+    scores = model.evaluate(data, one_batch=True).tolist()
+
+    inp = model.input_group.get_flattened_out_sequence().detach().cpu().numpy()
+    inps = [inp]
+    n = model.nb_inputs
+
+
+    fig, ax = plt.subplots(
+        1,
+        nb_samples,
+        figsize=figsize,
+        dpi=dpi,
+        sharex="row",
+        sharey="row",
+    )
+
+    sns.despine()
+
+
+
+    for i, s in enumerate(range(nb_samples)):
+        # plot and color input spikes
+
+        for idx, inp in enumerate(inps):
+            c = pal[i]
+
+            ax[i].scatter(
+                np.where(inp[s])[0],
+                np.where(inp[s])[1] + idx * n,
+                s=point_size,
+                marker=marker,
+                color=c,
+                alpha=point_alpha,
+            )
+            # invert y-axis
+            ax[i].invert_yaxis()
+        ax[i].set_ylim(-3, model.nb_inputs + 3)
+        ax[i].set_xlim(-3, model.nb_time_steps + 3)
+
+        if i != 0:
+            ax[i].set_yticks([])
+            ax[i].spines["left"].set_visible(False)
+            ax[i].spines["right"].set_visible(False)
+            ax[i].spines["top"].set_visible(False)
+
+        # invert y-axis
+        ax[i].invert_yaxis()
+
+    ax[0].set_xticks([])
+    ax[0].spines["bottom"].set_visible(False)
+
+    ax[0].set_ylabel("Neuron idx")
+    ax[0].set_yticks([])
+    ax[0].set_yticks([])
+
+    duration = round(model.nb_time_steps * model.time_step * 10) / 10
+    ax[0].set_xticks([0, model.nb_time_steps], [0, duration])
+
+    plt.tight_layout()
