@@ -1011,3 +1011,231 @@ class DoubleInputRecSpikingModel(RecurrentSpikingModel):
                 break
 
         return np.mean(np.array(metrics), axis=0)
+
+
+class DoubleLossRecSpikingModel(RecurrentSpikingModel):
+    def __init__(
+        self,
+        batch_size,
+        nb_time_steps,
+        nb_inputs,
+        nb_outputs1,
+        nb_outputs2,
+        device=torch.device("cpu"),
+        dtype=torch.float,
+        sparse_input=False,
+    ):
+        super(RecurrentSpikingModel, self).__init__()
+        self.batch_size = batch_size
+        self.nb_time_steps = nb_time_steps
+        self.nb_inputs = nb_inputs
+        self.nb_outputs1 = nb_outputs1
+        self.nb_outputs2 = nb_outputs2
+
+        self.device = device
+        self.dtype = dtype
+
+        self.fit_runs = []
+
+        self.groups = []
+        self.connections = []
+        self.devices = []
+        self.monitors = []
+        self.hist = []
+
+        self.optimizer = None
+        self.input_group = None
+        self.output_group = None
+        self.sparse_input = sparse_input
+
+    def configure(
+        self,
+        input,
+        output1,
+        output2,
+        loss_stack1=None,
+        loss_stack2=None,
+        optimizer=None,
+        optimizer_kwargs=None,
+        generator=None,
+        time_step=1e-3,
+        wandb=None,
+    ):
+        self.input_group = input
+        self.output_group1 = output1
+        self.output_group2 = output2
+        self.time_step = time_step
+        self.wandb = wandb
+
+        if loss_stack1 is not None:
+            self.loss_stack1 = loss_stack1
+        else:
+            self.loss_stack1 = loss_stacks.TemporalCrossEntropyReadoutStack()
+        if loss_stack2 is not None:
+            self.loss_stack2 = loss_stack2
+        else:
+            self.loss_stack2 = loss_stacks.TemporalCrossEntropyReadoutStack()
+
+        if generator is None:
+            self.data_generator_ = generators.StandardGenerator()
+        else:
+            self.data_generator_ = generator
+
+        # configure data generator
+        self.data_generator_.configure(
+            self.batch_size,
+            self.nb_time_steps,
+            self.nb_inputs,
+            self.time_step,
+            device=self.device,
+            dtype=self.dtype,
+        )
+
+        for o in self.groups + self.connections:
+            o.configure(
+                self.batch_size,
+                self.nb_time_steps,
+                self.time_step,
+                self.device,
+                self.dtype,
+            )
+
+        if optimizer is None:
+            optimizer = torch.optim.Adam
+
+        if optimizer_kwargs is None:
+            optimizer_kwargs = dict(lr=1e-3, betas=(0.9, 0.999))
+
+        self.optimizer_class = optimizer
+        self.optimizer_kwargs = optimizer_kwargs
+        self.configure_optimizer(self.optimizer_class, self.optimizer_kwargs)
+        self.to(self.device)
+
+    def monitor(self, dataset):
+        self.prepare_data(dataset)
+
+        # Prepare a list for each monitor to hold the batches
+        results = [[] for _ in self.monitors]
+        for local_X, (local_y1, local_y2) in self.data_generator(
+            dataset, shuffle=False
+        ):
+            for m in self.monitors:
+                m.reset()
+
+            output = self.forward_pass(
+                local_X, record=True, cur_batch_size=len(local_X)
+            )
+
+            for k, mon in enumerate(self.monitors):
+                results[k].append(mon.get_data())
+
+        return [torch.cat(res, dim=0) for res in results]
+
+    def predict(self, dataset, train_mode=False):
+        self.train(train_mode)
+        print("predicting")
+        if type(dataset) in [torch.Tensor, np.ndarray]:
+            output = self.forward_pass(dataset, cur_batch_size=len(dataset))
+            pred = self.loss_stack.predict(output)
+            return pred
+        else:
+            # self.prepare_data(data)
+            pred = []
+            for local_X, (local_y1, local_y2) in self.data_generator(
+                dataset, shuffle=False
+            ):
+                data_local = local_X.to(self.device)
+                output = self.forward_pass(data_local, cur_batch_size=len(local_X))
+                pred.append(self.loss_stack.predict(output).detach().cpu())
+            return torch.cat(pred, dim=0)
+
+    def train_epoch(self, dataset, shuffle=True):
+        self.train(True)
+        # self.prepare_data(dataset)
+        metrics = []
+        for local_X, (local_y1, local_y2) in self.data_generator(
+            dataset, shuffle=False
+        ):
+
+            output1, output2 = self.forward_pass(local_X, cur_batch_size=len(local_X))
+            # split output into parts corresponding to the first and second dataset
+            total_loss = self.get_total_loss(output1, local_y1, output2, local_y2)
+
+            # store loss and other metrics
+            metrics.append(
+                [self.out_loss.item(), self.reg_loss.item()]
+                + self.loss_stack1.metrics
+                + self.loss_stack2.metrics
+            )
+
+            # Use autograd to compute the backward pass.
+            self.optimizer_instance.zero_grad()
+            total_loss.backward()
+
+            self.optimizer_instance.step()
+            self.apply_constraints()
+
+        return np.mean(np.array(metrics), axis=0)
+
+    def run(self, x_batch, cur_batch_size=None, record=False):
+        if cur_batch_size is None:
+            cur_batch_size = len(x_batch)
+        self.reset_states(cur_batch_size)
+        self.input_group.feed_data(x_batch)
+        for t in range(self.nb_time_steps):
+            stork.nodes.base.CellGroup.clk = t
+            self.evolve_all()
+            self.propagate_all()
+            self.execute_all()
+            if record:
+                self.monitor_all()
+        self.out1 = self.output_group1.get_out_sequence()
+        self.out2 = self.output_group2.get_out_sequence()
+        return self.out1, self.out2
+
+    def get_total_loss(self, output1, target1, output2, target2, regularized=True):
+        target1 = target1.to(self.device)
+        target2 = target2.to(self.device)
+
+        self.out_loss = self.loss_stack1(output1, target1) + self.loss_stack2(
+            output2, target2
+        )
+
+        if regularized:
+            self.reg_loss = self.compute_regularizer_losses()
+            total_loss = self.out_loss + self.reg_loss
+        else:
+            total_loss = self.out_loss
+
+        return total_loss
+
+    def get_metric_names(self, prefix="", postfix=""):
+        metric_names = (
+            ["loss", "reg_loss"]
+            + self.loss_stack1.get_metric_names()
+            + self.loss_stack2.get_metric_names()
+        )
+        return ["%s%s%s" % (prefix, k, postfix) for k in metric_names]
+
+    def evaluate(self, dataset, train_mode=False, one_batch=False):
+        self.train(train_mode)
+        # self.prepare_data(test_dataset)
+        metrics = []
+        for local_X, (local_y1, local_y2) in self.data_generator(
+            dataset, shuffle=False
+        ):
+
+            output1, output2 = self.forward_pass(local_X, cur_batch_size=len(local_X))
+
+            # split output into parts corresponding to the first and second dataset
+            total_loss = self.get_total_loss(output1, local_y1, output2, local_y2)
+            # store loss and other metrics
+            metrics.append(
+                [self.out_loss.item(), self.reg_loss.item()]
+                + self.loss_stack1.metrics
+                + self.loss_stack2.metrics
+            )
+            if one_batch:
+                break
+
+        return np.mean(np.array(metrics), axis=0)
