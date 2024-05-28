@@ -340,7 +340,6 @@ class DictMeanSquareError(MeanSquareError):
 
 
 class DoubleData_MaxOverTimeCrossEntropy(MaxOverTimeCrossEntropy):
-
     """Readout stack that employs the max-over-time reduction strategy paired with categorical cross entropy."""
 
     def __init__(self, time_dimension=1, frac=0.5):
@@ -394,6 +393,29 @@ class DoubleData_MaxOverTimeCrossEntropy(MaxOverTimeCrossEntropy):
         _, pred_labels0 = torch.max(self.log_py_given_x(output[0]), dim=1)
         _, pred_labels1 = torch.max(self.log_py_given_x(output[1]), dim=1)
         return [pred_labels0, pred_labels1]
+
+    def __call__(self, output, targets):
+        return self.compute_loss(output, targets)
+
+
+class FiringRateReconstructionLoss(LossStack):
+    def __init__(self, duration):
+        super().__init__()
+        self.msqe_loss = nn.MSELoss()
+        self.duration = duration
+
+    def get_metric_names(self):
+        return []
+
+    def compute_loss(self, output, target):
+        """Computes MSQE loss between output and target."""
+        out_fr = torch.sum(output, dim=1) / self.duration
+        loss_value = self.msqe_loss(out_fr, target)
+        self.metrics = []
+        return loss_value
+
+    def predict(self, output):
+        return output  # here we just return the network output
 
     def __call__(self, output, targets):
         return self.compute_loss(output, targets)
