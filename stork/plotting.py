@@ -543,7 +543,7 @@ def plot_classifying_autoencoder_activity(
     print("plotting snapshot")
 
     if data is not None:
-        labels = [l for d, (l, d) in data]
+        labels = [l for d, (d, l) in data]
 
     # Run model once and get activities
     scores = model.evaluate(data, one_batch=True).tolist()
@@ -554,8 +554,8 @@ def plot_classifying_autoencoder_activity(
         g.get_flattened_out_sequence().detach().cpu().numpy() for g in hidden_groups
     ]
 
-    out_cl = model.out1.detach().cpu().numpy()
-    out_ae = model.out2.detach().cpu().numpy()
+    out_cl = model.out_class.detach().cpu().numpy()
+    out_ae = model.out_AE.detach().cpu().numpy()
 
     inps = [inp]
 
@@ -928,7 +928,7 @@ def plot_input(
         # plot and color input spikes
 
         for idx, inp in enumerate(inps):
-            c = pal[data[i][1][0]]
+            c = pal[data[i][1][1]]
 
             ax[i].scatter(
                 np.where(inp[s])[0],
