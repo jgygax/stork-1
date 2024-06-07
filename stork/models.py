@@ -1019,8 +1019,8 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
         batch_size,
         nb_time_steps,
         nb_inputs,
-        nb_outputs1,
-        nb_outputs2,
+        nb_outputs_AE,
+        nb_outputs_class,
         device=torch.device("cpu"),
         dtype=torch.float,
         sparse_input=False,
@@ -1029,8 +1029,8 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
         self.batch_size = batch_size
         self.nb_time_steps = nb_time_steps
         self.nb_inputs = nb_inputs
-        self.nb_outputs1 = nb_outputs1
-        self.nb_outputs2 = nb_outputs2
+        self.nb_outputs_AE = nb_outputs_AE
+        self.nb_outputs_class = nb_outputs_class
 
         self.device = device
         self.dtype = dtype
@@ -1051,10 +1051,11 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
     def configure(
         self,
         input,
-        output1,
-        output2,
-        loss_stack1=None,
-        loss_stack2=None,
+        output_AE,
+        output_class,
+        loss_AE=None,
+        AE_fr_loss=False,
+        loss_class=None,
         optimizer=None,
         optimizer_kwargs=None,
         generator=None,
@@ -1062,19 +1063,20 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
         wandb=None,
     ):
         self.input_group = input
-        self.output_group1 = output1
-        self.output_group2 = output2
+        self.output_group_AE = output_AE
+        self.output_group_class = output_class
         self.time_step = time_step
         self.wandb = wandb
+        self.AE_fr_loss = AE_fr_loss
 
-        if loss_stack1 is not None:
-            self.loss_stack1 = loss_stack1
+        if loss_AE is not None:
+            self.loss_AE = loss_AE
         else:
-            self.loss_stack1 = loss_stacks.TemporalCrossEntropyReadoutStack()
-        if loss_stack2 is not None:
-            self.loss_stack2 = loss_stack2
+            self.loss_AE = loss_stacks.TemporalCrossEntropyReadoutStack()
+        if loss_class is not None:
+            self.loss_class = loss_class
         else:
-            self.loss_stack2 = loss_stacks.TemporalCrossEntropyReadoutStack()
+            self.loss_class = loss_stacks.TemporalCrossEntropyReadoutStack()
 
         if generator is None:
             self.data_generator_ = generators.StandardGenerator()
@@ -1116,7 +1118,7 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
 
         # Prepare a list for each monitor to hold the batches
         results = [[] for _ in self.monitors]
-        for local_X, (local_y1, local_y2) in self.data_generator(
+        for local_X, (local_y_AE, local_y_class) in self.data_generator(
             dataset, shuffle=False
         ):
             for m in self.monitors:
@@ -1141,7 +1143,7 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
         else:
             # self.prepare_data(data)
             pred = []
-            for local_X, (local_y1, local_y2) in self.data_generator(
+            for local_X, (local_y_AE, local_y_class) in self.data_generator(
                 dataset, shuffle=False
             ):
                 data_local = local_X.to(self.device)
@@ -1153,19 +1155,19 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
         self.train(True)
         # self.prepare_data(dataset)
         metrics = []
-        for local_X, (local_y1, local_y2) in self.data_generator(
+        for local_X, (local_y_AE, local_y_class) in self.data_generator(
             dataset, shuffle=False
         ):
 
-            output1, output2 = self.forward_pass(local_X, cur_batch_size=len(local_X))
+            output_AE, output_class = self.forward_pass(local_X, cur_batch_size=len(local_X))
             # split output into parts corresponding to the first and second dataset
-            total_loss = self.get_total_loss(output1, local_y1, output2, local_y2)
+            total_loss = self.get_total_loss(output_AE, self.input_group.get_out_sequence().detach(), output_class, local_y_class)
 
             # store loss and other metrics
             metrics.append(
                 [self.out_loss.item(), self.reg_loss.item()]
-                + self.loss_stack1.metrics
-                + self.loss_stack2.metrics
+                + self.loss_AE.metrics
+                + self.loss_class.metrics
             )
 
             # Use autograd to compute the backward pass.
@@ -1189,17 +1191,22 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
             self.execute_all()
             if record:
                 self.monitor_all()
-        self.out1 = self.output_group1.get_out_sequence()
-        self.out2 = self.output_group2.get_out_sequence()
-        return self.out1, self.out2
+        self.out_AE = self.output_group_AE.get_out_sequence()
+        self.out_class = self.output_group_class.get_out_sequence()
+        return self.out_AE, self.out_class
 
-    def get_total_loss(self, output1, target1, output2, target2, regularized=True):
-        target1 = target1.to(self.device)
-        target2 = target2.to(self.device)
+    def get_total_loss(self, output_AE, target_AE, output_class, target_class, regularized=True):
+        target_AE = target_AE.to(self.device)
+        target_class = target_class.to(self.device)
 
-        self.out_loss = self.loss_stack1(output1, target1) + self.loss_stack2(
-            output2, target2
-        )
+        if self.AE_fr_loss:
+            self.out_loss = self.loss_AE(output_AE, torch.sum(target_AE, dim=1)) + self.loss_class(
+                output_class, target_class
+            )
+        else:
+            self.out_loss = self.loss_AE(output_AE, target_AE) + self.loss_class(
+                output_class, target_class
+            )
 
         if regularized:
             self.reg_loss = self.compute_regularizer_losses()
@@ -1212,8 +1219,8 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
     def get_metric_names(self, prefix="", postfix=""):
         metric_names = (
             ["loss", "reg_loss"]
-            + self.loss_stack1.get_metric_names()
-            + self.loss_stack2.get_metric_names()
+            + self.loss_AE.get_metric_names()
+            + self.loss_class.get_metric_names()
         )
         return ["%s%s%s" % (prefix, k, postfix) for k in metric_names]
 
@@ -1221,19 +1228,19 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
         self.train(train_mode)
         # self.prepare_data(test_dataset)
         metrics = []
-        for local_X, (local_y1, local_y2) in self.data_generator(
+        for local_X, (local_y_AE, local_y_class) in self.data_generator(
             dataset, shuffle=False
         ):
 
-            output1, output2 = self.forward_pass(local_X, cur_batch_size=len(local_X))
+            output_AE, output_class = self.forward_pass(local_X, cur_batch_size=len(local_X))
 
             # split output into parts corresponding to the first and second dataset
-            total_loss = self.get_total_loss(output1, local_y1, output2, local_y2)
+            total_loss = self.get_total_loss(output_AE, self.input_group.get_out_sequence().detach(), output_class, local_y_class)
             # store loss and other metrics
             metrics.append(
                 [self.out_loss.item(), self.reg_loss.item()]
-                + self.loss_stack1.metrics
-                + self.loss_stack2.metrics
+                + self.loss_AE.metrics
+                + self.loss_class.metrics
             )
             if one_batch:
                 break
