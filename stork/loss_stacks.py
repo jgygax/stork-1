@@ -301,7 +301,7 @@ class MeanSquareError(LossStack):
         self.mask = mask
 
     def get_metric_names(self):
-        return []
+        return ["loss_mse"]
 
     def compute_loss(self, output, target):
         """Computes MSQE loss between output and target."""
@@ -312,7 +312,7 @@ class MeanSquareError(LossStack):
                 output * self.mask.expand_as(output),
                 target * self.mask.expand_as(output),
             )
-        self.metrics = []
+        self.metrics = [loss_value.detach().cpu().numpy()]
         return loss_value
 
     def predict(self, output):
@@ -405,13 +405,13 @@ class FiringRateReconstructionLoss(LossStack):
         self.duration = duration
 
     def get_metric_names(self):
-        return []
+        return ["fr_loss_mse"]
 
     def compute_loss(self, output, target):
         """Computes MSQE loss between output and target."""
         out_fr = torch.sum(output, dim=1) / self.duration
         loss_value = self.msqe_loss(out_fr, target)
-        self.metrics = []
+        self.metrics = [loss_value.detach().cpu().numpy()]
         return loss_value
 
     def predict(self, output):
