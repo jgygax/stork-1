@@ -659,6 +659,8 @@ def plot_classifying_autoencoder_activity(
     ax[0][0].set_ylabel("Readout")
     plt.tight_layout()
 
+    return fig
+
 
 def plot_activity_snapshot_old(
     model,
@@ -896,6 +898,7 @@ def plot_activity_snapshot_old(
     sns.despine()
 
 
+
 def plot_input(
     model,
     data,
@@ -959,3 +962,5 @@ def plot_input(
     ax[0].set_xticks([0, model.nb_time_steps], [0, duration])
 
     plt.tight_layout()
+
+    return fig

@@ -71,6 +71,50 @@ class StateMonitor(Monitor):
         return torch.stack(self.data, dim=1)
 
 
+class BalanceMonitor(Monitor):
+    """Records the balance index of a neuron group over time.
+    This is only applicable to Dalian groups
+
+    Args:
+        group: The group to record from
+        key_exc: The name of the excitatory state
+        key_inh: The name of the inhibitory state
+    """
+
+    def __init__(self, group, key_exc="exc", key_inh="inh", subset=None, eps=1e-10):
+        super().__init__()
+        self.group = group
+        self.key_exc = key_exc
+        self.key_inh = key_inh
+        self.subset = subset
+        self.eps = eps
+
+    def reset(self):
+        self.data_exc = []
+        self.data_inh = []
+
+    def execute(self):
+        if self.subset is not None:
+            self.data_exc.append(
+                self.group.states[self.key_exc][:, self.subset].detach().cpu()
+            )
+            self.data_inh.append(
+                self.group.states[self.key_inh][:, self.subset].detach().cpu()
+            )
+        else:
+            self.data_exc.append(self.group.states[self.key_exc].detach().cpu())
+            self.data_inh.append(self.group.states[self.key_inh].detach().cpu())
+
+    def get_data(self):
+
+        exc = torch.stack(self.data_exc, dim=1)
+        inh = torch.stack(self.data_inh, dim=1)
+
+        diff = exc - inh
+        summe = exc + inh
+        return torch.multiply(diff, diff) / (torch.multiply(summe, summe) + self.eps)
+
+
 class SpikeCountMonitor(Monitor):
     """Counts number of spikes (sum over time in get_out_sequence() for each neuron)
 
@@ -144,6 +188,32 @@ class PopulationFiringRateMonitor(Monitor):
         s1 = self.group.get_out_sequence().detach().cpu()
         s1 = s1.reshape(s1.shape[0], s1.shape[1], self.group.nb_units)
         return torch.sum(s1, dim=-1) / self.group.nb_units
+
+
+class stdevPopulationFiringRateMonitor(Monitor):
+    """Monitors the standard deviation of the population firing rate (nr of spikes / nr of neurons for every timestep)
+
+    Args:
+        group: The group to record from
+
+    Returns:
+        A tensor with the standard deviation of the population firing rate for each input and timestep
+    """
+
+    def __init__(self, group):
+        super().__init__()
+        self.group = group
+
+    def reset(self):
+        self.data = []
+
+    def execute(self):
+        pass
+
+    def get_data(self):
+        s1 = self.group.get_out_sequence().detach().cpu()
+        s1 = s1.reshape(s1.shape[0], s1.shape[1], self.group.nb_units)
+        return torch.std(s1, dim=-1)
 
 
 class MeanVarianceMonitor(Monitor):
