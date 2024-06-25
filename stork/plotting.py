@@ -898,7 +898,6 @@ def plot_activity_snapshot_old(
     sns.despine()
 
 
-
 def plot_input(
     model,
     data,
