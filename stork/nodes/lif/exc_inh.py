@@ -3,6 +3,8 @@ import torch
 from stork import activations
 from stork.nodes.base import CellGroup
 
+from stork.utils import get_lif_kernel, get_2lif_kernel
+
 
 class ExcInhLIFGroup(CellGroup):
     def __init__(
@@ -273,3 +275,20 @@ class Exc2InhLIFGroup(CellGroup):
         self.ampa = self.states["ampa"] = new_ampa
         self.gaba = self.states["gaba"] = new_gaba
         self.nmda = self.states["nmda"] = new_nmda
+
+    def get_epsilon_numerical(self, timestep):
+        """
+        Returns numerical values of epsilon_bar and epsilon_hat
+        (used by fluctuation-driven initialization strategies)
+        """
+        exc_kernel = get_2lif_kernel(
+            self.tau_mem, self.tau_ampa, self.tau_nmda, timestep
+        )
+        inh_kernel = get_lif_kernel(self.tau_mem, self.tau_gaba, timestep)
+
+        epsilon_bar_exc = exc_kernel.sum() * timestep
+        epsilon_hat_exc = (exc_kernel**2).sum() * timestep
+        epsilon_bar_inh = inh_kernel.sum() * timestep
+        epsilon_hat_inh = (inh_kernel**2).sum() * timestep
+
+        return epsilon_bar_exc, epsilon_hat_exc, epsilon_bar_inh, epsilon_hat_inh

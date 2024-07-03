@@ -1048,6 +1048,7 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
         self.output_group = None
         self.sparse_input = sparse_input
 
+
     def configure(
         self,
         input,

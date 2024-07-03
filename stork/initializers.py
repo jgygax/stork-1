@@ -8,6 +8,7 @@ import numpy as np
 
 from . import connections
 from . import layers
+from . import nodes
 
 from .utils import get_lif_kernel
 
@@ -289,7 +290,11 @@ class FluctuationDrivenNormalInitializer(Initializer):
 
         # Read out relevant attributes from connection object
         n, _ = torch.nn.init._calculate_fan_in_and_fan_out(connection.op.weight)
-        ebar, ehat = self._calc_epsilon(connection.dst)
+
+        if isinstance(connection.dst, nodes.FilterLIFGroup):
+            ebar, ehat = connection.dst.get_epsilon_numerical(self.timestep)
+        else:
+            ebar, ehat = self._calc_epsilon(connection.dst)
 
         mu_w = self.mu_u / (n * self.nu * ebar)
         sigma_w = math.sqrt(
@@ -454,7 +459,13 @@ class FluctuationDrivenExponentialInitializer(FluctuationDrivenNormalInitializer
         """
 
         theta = 1.0  # Theta (firing threshold) is hardcoded as in the LIFGroup code
-        ebar_exc, ehat_exc, ebar_inh, ehat_inh = self._calc_epsilon(dst)
+
+        if isinstance(dst, nodes.Exc2InhLIFGroup):
+            ebar_exc, ehat_exc, ebar_inh, ehat_inh = dst.get_epsilon_numerical(
+                self.timestep
+            )
+        else:
+            ebar_exc, ehat_exc, ebar_inh, ehat_inh = self._calc_epsilon(dst)
 
         # Read out some properties of the afferent connections
         inh_cons = [c for c in dst.afferents if c.is_inhibitory]
@@ -528,10 +539,7 @@ class FluctuationDrivenExponentialInitializer(FluctuationDrivenNormalInitializer
                 * np.sqrt(
                     delta_EI**2 * ehat_exc * N_total_exc_rec
                     + delta_REC**2
-                    * (
-                        N_total_exc_ff * delta_EI**2 * ehat_exc
-                        + ehat_inh * N_total_inh
-                    )
+                    * (N_total_exc_ff * delta_EI**2 * ehat_exc + ehat_inh * N_total_inh)
                 )
                 / (theta * delta_EI * delta_REC)
             )
