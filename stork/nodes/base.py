@@ -111,6 +111,7 @@ class CellGroup(core.NetworkNode):
 
         self.int_shape = (batch_size,) + self.shape
         self.flat_seq_shape = (batch_size, self.nb_steps, self.nb_units)
+
         self.clear_input()
         for key in self.store_state_sequences:
             self.stored_sequences_[key] = []
