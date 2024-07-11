@@ -29,6 +29,7 @@ class SpikeMonitor(Monitor):
         super().__init__()
         self.group = group
         self.batch_count_ = 0
+        self.name = "SpikeMonitor"
 
     def reset(self):
         pass
@@ -57,6 +58,7 @@ class StateMonitor(Monitor):
         self.group = group
         self.key = key
         self.subset = subset
+        self.name = "StateMonitor"
 
     def reset(self):
         self.data = []
@@ -88,6 +90,7 @@ class BalanceMonitor(Monitor):
         self.key_inh = key_inh
         self.subset = subset
         self.eps = eps
+        self.name = "BalanceMonitor"
 
     def reset(self):
         self.data_exc = []
@@ -128,6 +131,7 @@ class SpikeCountMonitor(Monitor):
     def __init__(self, group):
         super().__init__()
         self.group = group
+        self.name = "SpikeCountMonitor"
 
     def reset(self):
         pass
@@ -152,6 +156,7 @@ class PopulationSpikeCountMonitor(Monitor):
     def __init__(self, group):
         super().__init__()
         self.group = group
+        self.name = "PopulationSpikeCountMonitor"
 
     def reset(self):
         self.data = []
@@ -177,6 +182,7 @@ class PopulationFiringRateMonitor(Monitor):
     def __init__(self, group):
         super().__init__()
         self.group = group
+        self.name = "PopulationFiringRateMonitor"
 
     def reset(self):
         self.data = []
@@ -203,6 +209,7 @@ class stdevPopulationFiringRateMonitor(Monitor):
     def __init__(self, group):
         super().__init__()
         self.group = group
+        self.name = "stdevPopulationFiringRateMonitor"
 
     def reset(self):
         self.data = []
@@ -232,6 +239,7 @@ class MeanVarianceMonitor(Monitor):
         super().__init__()
         self.group = group
         self.key = state
+        self.name = "MeanVarianceMonitor"
 
     def reset(self):
         self.s = 0
@@ -262,6 +270,7 @@ class GradientMonitor(Monitor):
     def __init__(self, target):
         super().__init__()
         self.target = target
+        self.name = "GradientMonitor"
 
     def reset(self):
         pass
@@ -296,6 +305,7 @@ class GradientOutputMonitor(GradientMonitor):
         super().__init__(target)
         self.count = 0
         self.sum = 0
+        self.name = "GradientOutputMonitor"
 
     def set_hook(self):
         """
