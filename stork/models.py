@@ -9,6 +9,10 @@ from . import generators
 from . import loss_stacks
 from . import monitors
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class RecurrentSpikingModel(nn.Module):
     def __init__(
@@ -48,6 +52,8 @@ class RecurrentSpikingModel(nn.Module):
         loss_stack=None,
         optimizer=None,
         optimizer_kwargs=None,
+        scheduler=None,
+        scheduler_kwargs=None,
         generator=None,
         time_step=1e-3,
         wandb=None,
@@ -102,6 +108,11 @@ class RecurrentSpikingModel(nn.Module):
         self.optimizer_class = optimizer
         self.optimizer_kwargs = optimizer_kwargs
         self.configure_optimizer(self.optimizer_class, self.optimizer_kwargs)
+
+        self.scheduler_class = scheduler
+        self.scheduler_kwargs = scheduler_kwargs
+        self.configure_scheduler(self.scheduler_class, self.scheduler_kwargs)
+
         self.to(self.device)
 
     def time_rescale(self, time_step=1e-3, batch_size=None):
@@ -111,6 +122,7 @@ class RecurrentSpikingModel(nn.Module):
             self.batch_size = batch_size
         saved_state = self.state_dict()
         saved_optimizer = self.optimizer_instance
+        saved_scheduler = self.scheduler_instance
         self.nb_time_steps = int(self.nb_time_steps * self.time_step / time_step)
         self.configure(
             self.input_group,
@@ -120,10 +132,13 @@ class RecurrentSpikingModel(nn.Module):
             time_step=time_step,
             optimizer=self.optimizer_class,
             optimizer_kwargs=self.optimizer_kwargs,
+            scheduler=self.scheduler_class,
+            scheduler_kwargs=self.scheduler_kwargs,
             wandb=self.wandb,
         )
         # Commenting this out will re-init the optimizer
         self.optimizer_instance = saved_optimizer
+        self.scheduler_instance = saved_scheduler
         self.load_state_dict(saved_state)
 
     def configure_optimizer(self, optimizer_class, optimizer_kwargs):
@@ -133,6 +148,17 @@ class RecurrentSpikingModel(nn.Module):
             )
         else:
             self.optimizer_instance = optimizer_class(self.parameters())
+
+    def configure_scheduler(self, scheduler_class, scheduler_kwargs):
+        if scheduler_class is None:
+            self.scheduler_instance = None
+        else:
+            if scheduler_kwargs is not None:
+                self.scheduler_instance = scheduler_class(
+                    self.optimizer_instance, **scheduler_kwargs
+                )
+            else:
+                self.scheduler_instance = scheduler_class(self.optimizer_instance)
 
     def reconfigure(self):
         """Runs configure and replaces arguments with default from last run.
@@ -290,6 +316,8 @@ class RecurrentSpikingModel(nn.Module):
             self.optimizer_instance.step()
             self.apply_constraints()
 
+        if self.scheduler_instance is not None:
+            self.scheduler_instance.step()
         return np.mean(np.array(metrics), axis=0)
 
     def train_epoch(self, dataset, shuffle=True):
@@ -311,6 +339,9 @@ class RecurrentSpikingModel(nn.Module):
 
             self.optimizer_instance.step()
             self.apply_constraints()
+
+        if self.scheduler_instance is not None:
+            self.scheduler_instance.step()
 
         return np.mean(np.array(metrics), axis=0)
 
@@ -335,6 +366,13 @@ class RecurrentSpikingModel(nn.Module):
         names = self.get_metric_names(prefix, postfix)
         history = {name: metrics_array[:, k] for k, name in enumerate(names)}
         return history
+
+    def get_metrics_dict(self, metrics_array, prefix="", postfix=""):
+        s = {}
+        names = self.get_metric_names(prefix, postfix)
+        for val, name in zip(metrics_array, names):
+            s[name] = val
+        return s
 
     def prime(self, dataset, nb_epochs=10, verbose=True, wandb=None, offset=0):
         self.hist = []
@@ -608,15 +646,17 @@ class RecurrentSpikingModel(nn.Module):
                 if ep % log_interval == 0:
                     t_iter = time.time() - t_start
                     self.wall_clock_time.append(t_iter)
-                    print(
-                        "%02i %s --%s t_iter=%.2f"
-                        % (
-                            ep,
-                            self.get_metrics_string(ret_train),
-                            self.get_metrics_string(ret_valid, prefix="val_"),
-                            t_iter,
-                        )
+                    text = "%02i %s --%s t_iter=%.2f" % (
+                        ep,
+                        self.get_metrics_string(ret_train),
+                        self.get_metrics_string(ret_valid, prefix="val_"),
+                        t_iter,
                     )
+                    try:
+                        logger.info(text)
+                    except:
+
+                        print(text)
 
             # when using annealing option
             if anneal:
@@ -842,6 +882,8 @@ class DoubleInputRecSpikingModel(RecurrentSpikingModel):
         loss_stack=None,
         optimizer=None,
         optimizer_kwargs=None,
+        scheduler=None,
+        scheduler_kwargs=None,
         generator1=None,
         generator2=None,
         time_step=1e-3,
@@ -903,6 +945,11 @@ class DoubleInputRecSpikingModel(RecurrentSpikingModel):
         self.optimizer_class = optimizer
         self.optimizer_kwargs = optimizer_kwargs
         self.configure_optimizer(self.optimizer_class, self.optimizer_kwargs)
+
+        self.scheduler_class = scheduler
+        self.scheduler_kwargs = scheduler_kwargs
+        self.configure_scheduler(self.scheduler_class, self.scheduler_kwargs)
+
         self.to(self.device)
 
     def monitor(self, datasets):
@@ -1058,6 +1105,8 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
         loss_class=None,
         optimizer=None,
         optimizer_kwargs=None,
+        scheduler=None,
+        scheduler_kwargs=None,
         generator=None,
         time_step=1e-3,
         wandb=None,
@@ -1072,7 +1121,7 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
         if loss_AE is not None:
             self.loss_AE = loss_AE
         else:
-            self.loss_AE = loss_stacks.TemporalCrossEntropyReadoutStack()
+            self.loss_AE = loss_stacks.FiringRateReconstructionLoss()
         if loss_class is not None:
             self.loss_class = loss_class
         else:
@@ -1111,6 +1160,11 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
         self.optimizer_class = optimizer
         self.optimizer_kwargs = optimizer_kwargs
         self.configure_optimizer(self.optimizer_class, self.optimizer_kwargs)
+
+        self.scheduler_class = scheduler
+        self.scheduler_kwargs = scheduler_kwargs
+        self.configure_scheduler(self.scheduler_class, self.scheduler_kwargs)
+
         self.to(self.device)
 
     def monitor(self, dataset):

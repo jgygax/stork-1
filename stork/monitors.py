@@ -204,7 +204,7 @@ class PopulationFiringRateMonitor(Monitor):
         return torch.sum(s1, dim=-1) / self.group.nb_units
 
 
-class stdevPopulationFiringRateMonitor(Monitor):
+class StdevPopulationFiringRateMonitor(Monitor):
     """Monitors the standard deviation of the population firing rate (nr of spikes / nr of neurons for every timestep)
 
     Args:

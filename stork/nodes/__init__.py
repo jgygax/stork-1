@@ -1,6 +1,7 @@
 from .base import CellGroup
 from .readout import ReadoutGroup
 from .special import FanOutGroup, TorchOp, MaxPool1d, MaxPool2d
+from .tsodyks_markram_stp import TsodyksMarkramSTP, TsodyksMarkramLearnSTP
 from .input import (
     InputGroup,
     RasInputGroup,
