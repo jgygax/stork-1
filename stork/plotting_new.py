@@ -312,6 +312,6 @@ class CurrentInputActivityPlotter(ActivityPlotter):
         ax.spines["top"].set_visible(False)
 
     def plot_readout(self, ax, data, label, pal, bg_col):
-        ax.plot(data, color=bg_col)
-        ax.plot(label, color=pal[0])
+        ax.plot(label, color=bg_col)
+        ax.plot(data, color=pal[0])
         self.turn_axis_off(ax)

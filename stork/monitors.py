@@ -25,11 +25,11 @@ class SpikeMonitor(Monitor):
         argwhere of out sequence
     """
 
-    def __init__(self, group):
+    def __init__(self, group, name="SpikeMonitor"):
         super().__init__()
         self.group = group
         self.batch_count_ = 0
-        self.name = "SpikeMonitor"
+        self.name = name
 
     def reset(self):
         pass
@@ -53,12 +53,12 @@ class StateMonitor(Monitor):
         key: The name of the state
     """
 
-    def __init__(self, group, key, subset=None):
+    def __init__(self, group, key, subset=None, name="StateMonitor"):
         super().__init__()
         self.group = group
         self.key = key
         self.subset = subset
-        self.name = "StateMonitor"
+        self.name = name
 
     def reset(self):
         self.data = []
@@ -83,14 +83,22 @@ class BalanceMonitor(Monitor):
         key_inh: The name of the inhibitory state
     """
 
-    def __init__(self, group, key_exc="exc", key_inh="inh", subset=None, eps=1e-10):
+    def __init__(
+        self,
+        group,
+        key_exc="exc",
+        key_inh="inh",
+        subset=None,
+        eps=1e-10,
+        name="BalanceMonitor",
+    ):
         super().__init__()
         self.group = group
         self.key_exc = key_exc
         self.key_inh = key_inh
         self.subset = subset
         self.eps = eps
-        self.name = "BalanceMonitor"
+        self.name = name
 
     def reset(self):
         self.data_exc = []
@@ -128,10 +136,10 @@ class SpikeCountMonitor(Monitor):
         A tensor with spike counts for each input and neuron
     """
 
-    def __init__(self, group):
+    def __init__(self, group, name="SpikeCountMonitor"):
         super().__init__()
         self.group = group
-        self.name = "SpikeCountMonitor"
+        self.name = name
 
     def reset(self):
         pass
@@ -153,10 +161,10 @@ class PopulationSpikeCountMonitor(Monitor):
         A tensor with spike counts for each input and neuron
     """
 
-    def __init__(self, group):
+    def __init__(self, group, name="PopulationSpikeCountMonitor"):
         super().__init__()
         self.group = group
-        self.name = "PopulationSpikeCountMonitor"
+        self.name = name
 
     def reset(self):
         self.data = []
@@ -179,10 +187,10 @@ class PopulationFiringRateMonitor(Monitor):
         A tensor with population firing rate for each input and timestep
     """
 
-    def __init__(self, group):
+    def __init__(self, group, name="PopulationFiringRateMonitor"):
         super().__init__()
         self.group = group
-        self.name = "PopulationFiringRateMonitor"
+        self.name = name
 
     def reset(self):
         self.data = []
@@ -206,10 +214,10 @@ class stdevPopulationFiringRateMonitor(Monitor):
         A tensor with the standard deviation of the population firing rate for each input and timestep
     """
 
-    def __init__(self, group):
+    def __init__(self, group, name="stdevPopulationFiringRateMonitor"):
         super().__init__()
         self.group = group
-        self.name = "stdevPopulationFiringRateMonitor"
+        self.name = name
 
     def reset(self):
         self.data = []
@@ -235,11 +243,11 @@ class MeanVarianceMonitor(Monitor):
         A tensors with mean and variance for each neuron/state along the last dim
     """
 
-    def __init__(self, group, state="input"):
+    def __init__(self, group, state="input", name="MeanVarianceMonitor"):
         super().__init__()
         self.group = group
         self.key = state
-        self.name = "MeanVarianceMonitor"
+        self.name = name
 
     def reset(self):
         self.s = 0
@@ -267,10 +275,10 @@ class GradientMonitor(Monitor):
                 Needs to have a .weight argument
     """
 
-    def __init__(self, target):
+    def __init__(self, target, name="GradientMonitor"):
         super().__init__()
         self.target = target
-        self.name = "GradientMonitor"
+        self.name = name
 
     def reset(self):
         pass
@@ -301,11 +309,11 @@ class GradientOutputMonitor(GradientMonitor):
                 (usually a stork.connection.op object)
     """
 
-    def __init__(self, target):
+    def __init__(self, target, name="GradientOutputMonitor"):
         super().__init__(target)
         self.count = 0
         self.sum = 0
-        self.name = "GradientOutputMonitor"
+        self.name = name
 
     def set_hook(self):
         """

@@ -1048,7 +1048,6 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
         self.output_group = None
         self.sparse_input = sparse_input
 
-
     def configure(
         self,
         input,
@@ -1160,9 +1159,16 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
             dataset, shuffle=False
         ):
 
-            output_AE, output_class = self.forward_pass(local_X, cur_batch_size=len(local_X))
+            output_AE, output_class = self.forward_pass(
+                local_X, cur_batch_size=len(local_X)
+            )
             # split output into parts corresponding to the first and second dataset
-            total_loss = self.get_total_loss(output_AE, self.input_group.get_out_sequence().detach(), output_class, local_y_class)
+            total_loss = self.get_total_loss(
+                output_AE,
+                self.input_group.get_out_sequence().detach(),
+                output_class,
+                local_y_class,
+            )
 
             # store loss and other metrics
             metrics.append(
@@ -1196,14 +1202,16 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
         self.out_class = self.output_group_class.get_out_sequence()
         return self.out_AE, self.out_class
 
-    def get_total_loss(self, output_AE, target_AE, output_class, target_class, regularized=True):
+    def get_total_loss(
+        self, output_AE, target_AE, output_class, target_class, regularized=True
+    ):
         target_AE = target_AE.to(self.device)
         target_class = target_class.to(self.device)
 
         if self.AE_fr_loss:
-            self.out_loss = self.loss_AE(output_AE, torch.sum(target_AE, dim=1)) + self.loss_class(
-                output_class, target_class
-            )
+            self.out_loss = self.loss_AE(
+                output_AE, torch.sum(target_AE, dim=1)
+            ) + self.loss_class(output_class, target_class)
         else:
             self.out_loss = self.loss_AE(output_AE, target_AE) + self.loss_class(
                 output_class, target_class
@@ -1233,10 +1241,17 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
             dataset, shuffle=False
         ):
 
-            output_AE, output_class = self.forward_pass(local_X, cur_batch_size=len(local_X))
+            output_AE, output_class = self.forward_pass(
+                local_X, cur_batch_size=len(local_X)
+            )
 
             # split output into parts corresponding to the first and second dataset
-            total_loss = self.get_total_loss(output_AE, self.input_group.get_out_sequence().detach(), output_class, local_y_class)
+            total_loss = self.get_total_loss(
+                output_AE,
+                self.input_group.get_out_sequence().detach(),
+                output_class,
+                local_y_class,
+            )
             # store loss and other metrics
             metrics.append(
                 [self.out_loss.item(), self.reg_loss.item()]

@@ -400,7 +400,9 @@ def plot_activity_snapshot(
                     ax[0][i].plot(ro_line, color_readout[line_index])
                     if label is not None:
                         ax[0][i].plot(
-                            label[i][:, line_index], color=color_readout[line_index], ls="--"
+                            label[i][:, line_index],
+                            color=color_readout[line_index],
+                            ls="--",
                         )
             if title:
                 ax[0][i].set_title(data[i][1])
@@ -508,14 +510,13 @@ def plot_activity_CST(
 
     dur_50 = 50e-3 / model.time_step
     # print(dur_10)
-    add_xscalebar(
-        ax[-1][0], dur_50, label="50ms", pos=pos, off=off, fontsize=8
-    )
+    add_xscalebar(ax[-1][0], dur_50, label="50ms", pos=pos, off=off, fontsize=8)
 
     ax[-1][0].set_ylabel("Input")
     ax[0][0].set_ylabel("RO X")
     ax[1][0].set_ylabel("RO Y")
     plt.tight_layout()
+
 
 def plot_autoencoder_activity(
     model,
