@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 
 class Monitor:
@@ -174,7 +175,7 @@ class PopulationSpikeCountMonitor(Monitor):
 
     def get_data(self):
         s1 = torch.sum(self.group.get_out_sequence().detach().cpu(), dim=1)
-        return torch.mean(s1)
+        return torch.mean(s1, dim=1)
 
 
 class PopulationFiringRateMonitor(Monitor):
@@ -338,3 +339,67 @@ class GradientOutputMonitor(GradientMonitor):
 
     def get_data(self):
         return self.sum / self.count
+
+
+class SynchronyMonitor(Monitor):
+    """Measures the synchrony of a group of neurons
+
+    Args:
+        group: The group to record from
+    """
+
+    def __init__(self, group, name="SynchronyMonitor"):
+        super().__init__()
+        self.group = group
+        self.name = name
+
+    def reset(self):
+        self.data = []
+
+    def execute(self):
+        pass
+
+    def get_data(self):
+        g = self.group.get_out_sequence().detach().cpu()
+        synchrony = torch.std(
+            torch.mean(self.group.get_out_sequence().detach().cpu(), dim=1), dim=1
+        )
+        return synchrony
+
+
+class RegularityMonitor(Monitor):
+    """Measures the regularity of a group of neurons
+
+    Args:
+        group: The group to record from
+    """
+
+    def __init__(self, group, name="RegularityMonitor"):
+        super().__init__()
+        self.group = group
+        self.name = name
+
+    def reset(self):
+        self.data = []
+
+    def execute(self):
+        pass
+
+    def get_isi(self, inp):
+        isis = []
+        for neuron in inp.T:
+            isis += np.diff(np.where(neuron == 1)[0]).tolist()
+        return torch.tensor(isis, dtype=torch.float32)
+
+    def get_cv_isi(self, isis):
+        return torch.std(isis) / torch.mean(isis)
+
+    def get_data(self):
+        g = self.group.get_out_sequence().detach().cpu()
+        cvisis = []
+        for sample in g:
+            isis = self.get_isi(sample)
+            cv_isi = self.get_cv_isi(isis)
+            cvisis.append(cv_isi)
+        cvisis = torch.tensor(cvisis, dtype=torch.float32)
+        return cvisis
