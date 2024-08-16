@@ -210,6 +210,7 @@ class RecurrentSpikingModel(nn.Module):
         for c in self.connections:
             c.remove_regularizers()
 
+    # TODO: add option to do online learning (e.g. on each time step consider the current loss)
     def run(self, x_batch, cur_batch_size=None, record=False):
         if cur_batch_size is None:
             cur_batch_size = len(x_batch)
@@ -620,10 +621,42 @@ class RecurrentSpikingModel(nn.Module):
 
             # when using annealing option
             if anneal:
-                # TOO: check wheter the offset is correctly used
-                if (ep + offset) >= self.anneal_start:
-                    if (ep + offset - self.anneal_start) % self.anneal_interval == 0:
-                        self.anneal_beta(ep)
+                # TODO: check wheter the offset has to be used
+                if ep >= self.anneal_start:
+                    if (ep - self.anneal_start) % self.anneal_interval == 0:
+                        for g in range(1, len(self.groups) - 1):
+                            try:
+                                beta = self.groups[g].act_fn.surrogate_params["beta"]
+                                print("beta", beta)
+                                self.groups[g].act_fn.surrogate_params["beta"] = (
+                                    beta + self.anneal_step
+                                )
+                                self.groups[g].spk_nl = self.groups[g].act_fn.apply
+                                print(
+                                    "annealed",
+                                    self.groups[g].act_fn.surrogate_params["beta"],
+                                )
+                                if "beta" in self.groups[g].act_fn.escape_noise_params:
+                                    beta = self.groups[g].act_fn.escape_noise_params[
+                                        "beta"
+                                    ]
+                                    print("noise beta", beta)
+                                    self.groups[g].act_fn.escape_noise_params[
+                                        "beta"
+                                    ] = (beta + self.anneal_step)
+                                    self.groups[g].spk_nl = self.groups[g].act_fn.apply
+                                    print(
+                                        "annealed noise params",
+                                        self.groups[g].act_fn.escape_noise_params[
+                                            "beta"
+                                        ],
+                                    )
+                            except:
+                                beta = self.groups[g].act_fn.beta
+                                print("beta", beta)
+                                self.groups[g].act_fn.beta = beta + self.anneal_step
+                                self.groups[g].spk_nl = self.groups[g].act_fn.apply
+                                print("annealed", self.groups[g].act_fn.beta)
 
         self.hist = np.concatenate(
             (np.array(self.hist_train), np.array(self.hist_valid))
@@ -675,7 +708,7 @@ class RecurrentSpikingModel(nn.Module):
         self.prepare_data(dataset)
 
         # Prepare a list for each monitor to hold the batches
-        results = [[] for _ in self.monitors]
+        results = {mon.key + "-" + str(mon.group.name): [] for mon in self.monitors}
         for local_X, local_y in self.data_generator(dataset, shuffle=False):
             for m in self.monitors:
                 m.reset()
@@ -685,9 +718,11 @@ class RecurrentSpikingModel(nn.Module):
             )
 
             for k, mon in enumerate(self.monitors):
-                results[k].append(mon.get_data())
+                results[mon.key + "-" + str(mon.group.name)].append(mon.get_data())
 
-        return [torch.cat(res, dim=0) for res in results]
+        for k, v in results.items():
+            results[k] = torch.cat(v, dim=0)
+        return results  # [torch.cat(res, dim=0) for res in results]
 
     def monitor_backward(self, dataset):
         """
