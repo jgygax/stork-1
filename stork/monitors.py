@@ -348,9 +348,10 @@ class SynchronyMonitor(Monitor):
         group: The group to record from
     """
 
-    def __init__(self, group, name="SynchronyMonitor"):
+    def __init__(self, group, bin_steps=1, name="SynchronyMonitor"):
         super().__init__()
         self.group = group
+        self.bin_steps = bin_steps
         self.name = name
 
     def reset(self):
@@ -361,22 +362,24 @@ class SynchronyMonitor(Monitor):
 
     def get_data(self):
         g = self.group.get_out_sequence().detach().cpu()
-        synchrony = torch.std(
-            torch.mean(self.group.get_out_sequence().detach().cpu(), dim=1), dim=1
-        )
+        # get the moving average of the spikes with window size bin_steps
+        g = torch.nn.functional.avg_pool1d(g, self.bin_steps, stride=1).bool().float()
+        m = torch.mean(g, dim=-1)
+        synchrony = torch.std(m, dim=-1)
         return synchrony
 
 
-class RegularityMonitor(Monitor):
+class IrregularityMonitor(Monitor):
     """Measures the regularity of a group of neurons
 
     Args:
         group: The group to record from
     """
 
-    def __init__(self, group, name="RegularityMonitor"):
+    def __init__(self, group, bin_steps=1, name="IrregularityMonitor"):
         super().__init__()
         self.group = group
+        self.bin_steps = bin_steps
         self.name = name
 
     def reset(self):
@@ -388,7 +391,9 @@ class RegularityMonitor(Monitor):
     def get_isi(self, inp):
         isis = []
         for neuron in inp.T:
-            isis += np.diff(np.where(neuron == 1)[0]).tolist()
+            isis += np.diff(np.where(neuron)[0]).tolist()
+        # remove all isis that are smaller than bin_steps
+        isis = [x for x in isis if x >= self.bin_steps]
         return torch.tensor(isis, dtype=torch.float32)
 
     def get_cv_isi(self, isis):
@@ -396,6 +401,9 @@ class RegularityMonitor(Monitor):
 
     def get_data(self):
         g = self.group.get_out_sequence().detach().cpu()
+        # get the moving average of the spikes with window size bin_steps
+        g = torch.nn.functional.avg_pool1d(g, self.bin_steps, stride=1)
+
         cvisis = []
         for sample in g:
             isis = self.get_isi(sample)

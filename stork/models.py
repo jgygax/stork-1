@@ -654,8 +654,8 @@ class RecurrentSpikingModel(nn.Module):
                     )
                     try:
                         logger.info(text)
+                        print(text)
                     except:
-
                         print(text)
 
             # when using annealing option

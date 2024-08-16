@@ -526,10 +526,15 @@ def split_dataset(X, y, splits=[0.8, 0.2], shuffle=True):
     splits /= splits.sum()
 
     if shuffle:
-        idx = np.arange(len(X), dtype=np.int_)
-        np.random.shuffle(idx)
-        X = X[idx]
-        y = y[idx]
+        try:
+            idx = np.arange(len(X), dtype=np.int_)
+            np.random.shuffle(idx)
+            X = X[idx]
+            y = y[idx]
+        except:
+            perm = torch.randperm(len(X))
+            X = [X[i] for i in perm]
+            y = [y[i] for i in perm]
 
     start = 0
     sets = []
