@@ -96,6 +96,16 @@ class Connection(BaseConnection):
     def configure(self, batch_size, nb_steps, time_step, device, dtype):
         super().configure(batch_size, nb_steps, time_step, device, dtype)
 
+        ####################################################################################
+        # Trying to add LPL
+        ####################################################################################
+        # self.dst.pre_z = self.dst.states["pre_z"] = torch.zeros(
+        #     size=(self.dst.nb_units, self.src.nb_units)
+        # )
+        # self.dst.pre_z_tilde = self.dst.states["pre_z_tilde"] = torch.zeros_like(
+        #     self.dst.pre_z
+        # )
+
     def add_diagonal_structure(self, width=1.0, ampl=1.0):
         if type(self.op) != nn.Linear:
             raise ValueError("Expected op to be nn.Linear to add diagonal structure.")
@@ -116,11 +126,29 @@ class Connection(BaseConnection):
 
     def forward(self):
         preact = self.src.out
+
         if not self.propagate_gradients:
             preact = preact.detach()
         if self.flatten_input:
             shp = preact.shape
             preact = preact.reshape(shp[:1] + (-1,))
+
+        ####################################################################################
+        # Trying to add LPL
+        ####################################################################################
+        # if preact.shape != self.dst.pre_z.shape:
+        #     self.dst.pre_z = torch.zeros_like(preact)
+        # if preact.shape != self.dst.pre_z_tilde.shape:
+        #     self.dst.pre_z_tilde = torch.zeros_like(preact)
+
+        # new_pre_z = self.dst.dcy_z * self.dst.pre_z + preact
+        # new_pre_z_tilde = (
+        #     self.dst.dcy_z_tilde * self.dst.pre_z_tilde
+        #     + self.dst.scl_z_tilde * self.dst.pre_z
+        # )
+
+        # self.dst.pre_z = self.dst.states["pre_z"] = new_pre_z
+        # self.dst.pre_z_tilde = self.dst.states["pre_z_tilde"] = new_pre_z_tilde
 
         out = self.op(preact)
         self.dst.add_to_state(self.target, out)

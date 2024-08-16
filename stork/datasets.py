@@ -727,7 +727,7 @@ class PoissonDataset(SpikingDataset):
         stop_frac=0.8,
         bg_act=0.0,
     ):
-        """This dataset takes standard (vision) datasets as input and provides a time to first spike dataset.
+        """This dataset takes standard (vision) datasets as input and provides a poisson dataset.
 
         Args:
             dataset: The conventional analog dataset as a tuple (X,y)
