@@ -14,5 +14,6 @@ from . import optimizers
 from . import plotting
 from . import regularizers
 from . import utils
+from . import plotting_new
 
 __version__ = "0.1.1"

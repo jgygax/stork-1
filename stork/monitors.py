@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 
 class Monitor:
@@ -25,10 +26,11 @@ class SpikeMonitor(Monitor):
         argwhere of out sequence
     """
 
-    def __init__(self, group):
+    def __init__(self, group, name="SpikeMonitor"):
         super().__init__()
         self.group = group
         self.batch_count_ = 0
+        self.name = name
 
     def reset(self):
         pass
@@ -52,11 +54,12 @@ class StateMonitor(Monitor):
         key: The name of the state
     """
 
-    def __init__(self, group, key, subset=None):
+    def __init__(self, group, key, subset=None, name="StateMonitor"):
         super().__init__()
         self.group = group
         self.key = key
         self.subset = subset
+        self.name = name
 
     def reset(self):
         self.data = []
@@ -71,6 +74,59 @@ class StateMonitor(Monitor):
         return torch.stack(self.data, dim=1)
 
 
+class BalanceMonitor(Monitor):
+    """Records the balance index of a neuron group over time.
+    This is only applicable to Dalian groups
+
+    Args:
+        group: The group to record from
+        key_exc: The name of the excitatory state
+        key_inh: The name of the inhibitory state
+    """
+
+    def __init__(
+        self,
+        group,
+        key_exc="exc",
+        key_inh="inh",
+        subset=None,
+        eps=1e-10,
+        name="BalanceMonitor",
+    ):
+        super().__init__()
+        self.group = group
+        self.key_exc = key_exc
+        self.key_inh = key_inh
+        self.subset = subset
+        self.eps = eps
+        self.name = name
+
+    def reset(self):
+        self.data_exc = []
+        self.data_inh = []
+
+    def execute(self):
+        if self.subset is not None:
+            self.data_exc.append(
+                self.group.states[self.key_exc][:, self.subset].detach().cpu()
+            )
+            self.data_inh.append(
+                self.group.states[self.key_inh][:, self.subset].detach().cpu()
+            )
+        else:
+            self.data_exc.append(self.group.states[self.key_exc].detach().cpu())
+            self.data_inh.append(self.group.states[self.key_inh].detach().cpu())
+
+    def get_data(self):
+
+        exc = torch.stack(self.data_exc, dim=1)
+        inh = torch.stack(self.data_inh, dim=1)
+
+        diff = exc - inh
+        summe = exc + inh
+        return torch.multiply(diff, diff) / (torch.multiply(summe, summe) + self.eps)
+
+
 class SpikeCountMonitor(Monitor):
     """Counts number of spikes (sum over time in get_out_sequence() for each neuron)
 
@@ -81,9 +137,10 @@ class SpikeCountMonitor(Monitor):
         A tensor with spike counts for each input and neuron
     """
 
-    def __init__(self, group):
+    def __init__(self, group, name="SpikeCountMonitor"):
         super().__init__()
         self.group = group
+        self.name = name
 
     def reset(self):
         pass
@@ -105,9 +162,10 @@ class PopulationSpikeCountMonitor(Monitor):
         A tensor with spike counts for each input and neuron
     """
 
-    def __init__(self, group):
+    def __init__(self, group, name="PopulationSpikeCountMonitor"):
         super().__init__()
         self.group = group
+        self.name = name
 
     def reset(self):
         self.data = []
@@ -117,7 +175,7 @@ class PopulationSpikeCountMonitor(Monitor):
 
     def get_data(self):
         s1 = torch.sum(self.group.get_out_sequence().detach().cpu(), dim=1)
-        return torch.mean(s1)
+        return torch.mean(s1, dim=1)
 
 
 class PopulationFiringRateMonitor(Monitor):
@@ -130,9 +188,10 @@ class PopulationFiringRateMonitor(Monitor):
         A tensor with population firing rate for each input and timestep
     """
 
-    def __init__(self, group):
+    def __init__(self, group, name="PopulationFiringRateMonitor"):
         super().__init__()
         self.group = group
+        self.name = name
 
     def reset(self):
         self.data = []
@@ -144,6 +203,33 @@ class PopulationFiringRateMonitor(Monitor):
         s1 = self.group.get_out_sequence().detach().cpu()
         s1 = s1.reshape(s1.shape[0], s1.shape[1], self.group.nb_units)
         return torch.sum(s1, dim=-1) / self.group.nb_units
+
+
+class StdevPopulationFiringRateMonitor(Monitor):
+    """Monitors the standard deviation of the population firing rate (nr of spikes / nr of neurons for every timestep)
+
+    Args:
+        group: The group to record from
+
+    Returns:
+        A tensor with the standard deviation of the population firing rate for each input and timestep
+    """
+
+    def __init__(self, group, name="stdevPopulationFiringRateMonitor"):
+        super().__init__()
+        self.group = group
+        self.name = name
+
+    def reset(self):
+        self.data = []
+
+    def execute(self):
+        pass
+
+    def get_data(self):
+        s1 = self.group.get_out_sequence().detach().cpu()
+        s1 = s1.reshape(s1.shape[0], s1.shape[1], self.group.nb_units)
+        return torch.std(s1, dim=-1)
 
 
 class MeanVarianceMonitor(Monitor):
@@ -158,10 +244,11 @@ class MeanVarianceMonitor(Monitor):
         A tensors with mean and variance for each neuron/state along the last dim
     """
 
-    def __init__(self, group, state="input"):
+    def __init__(self, group, state="input", name="MeanVarianceMonitor"):
         super().__init__()
         self.group = group
         self.key = state
+        self.name = name
 
     def reset(self):
         self.s = 0
@@ -189,9 +276,10 @@ class GradientMonitor(Monitor):
                 Needs to have a .weight argument
     """
 
-    def __init__(self, target):
+    def __init__(self, target, name="GradientMonitor"):
         super().__init__()
         self.target = target
+        self.name = name
 
     def reset(self):
         pass
@@ -222,10 +310,11 @@ class GradientOutputMonitor(GradientMonitor):
                 (usually a stork.connection.op object)
     """
 
-    def __init__(self, target):
+    def __init__(self, target, name="GradientOutputMonitor"):
         super().__init__(target)
         self.count = 0
         self.sum = 0
+        self.name = name
 
     def set_hook(self):
         """
@@ -250,3 +339,75 @@ class GradientOutputMonitor(GradientMonitor):
 
     def get_data(self):
         return self.sum / self.count
+
+
+class SynchronyMonitor(Monitor):
+    """Measures the synchrony of a group of neurons
+
+    Args:
+        group: The group to record from
+    """
+
+    def __init__(self, group, bin_steps=1, name="SynchronyMonitor"):
+        super().__init__()
+        self.group = group
+        self.bin_steps = bin_steps
+        self.name = name
+
+    def reset(self):
+        self.data = []
+
+    def execute(self):
+        pass
+
+    def get_data(self):
+        g = self.group.get_out_sequence().detach().cpu()
+        # get the moving average of the spikes with window size bin_steps
+        g = torch.nn.functional.avg_pool1d(g, self.bin_steps, stride=1).bool().float()
+        m = torch.mean(g, dim=-1)
+        synchrony = torch.std(m, dim=-1)
+        return synchrony
+
+
+class IrregularityMonitor(Monitor):
+    """Measures the regularity of a group of neurons
+
+    Args:
+        group: The group to record from
+    """
+
+    def __init__(self, group, bin_steps=1, name="IrregularityMonitor"):
+        super().__init__()
+        self.group = group
+        self.bin_steps = bin_steps
+        self.name = name
+
+    def reset(self):
+        self.data = []
+
+    def execute(self):
+        pass
+
+    def get_isi(self, inp):
+        isis = []
+        for neuron in inp.T:
+            isis += np.diff(np.where(neuron)[0]).tolist()
+        # remove all isis that are smaller than bin_steps
+        isis = [x for x in isis if x >= self.bin_steps]
+        return torch.tensor(isis, dtype=torch.float32)
+
+    def get_cv_isi(self, isis):
+        return torch.std(isis) / torch.mean(isis)
+
+    def get_data(self):
+        g = self.group.get_out_sequence().detach().cpu()
+        # get the moving average of the spikes with window size bin_steps
+        g = torch.nn.functional.avg_pool1d(g, self.bin_steps, stride=1)
+
+        cvisis = []
+        for sample in g:
+            isis = self.get_isi(sample)
+            cv_isi = self.get_cv_isi(isis)
+            cvisis.append(cv_isi)
+        cvisis = torch.tensor(cvisis, dtype=torch.float32)
+        return cvisis

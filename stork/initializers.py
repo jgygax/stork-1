@@ -8,6 +8,7 @@ import numpy as np
 
 from . import connections
 from . import layers
+from . import nodes
 
 from .utils import get_lif_kernel
 
@@ -51,12 +52,18 @@ class Initializer:
     """
 
     def __init__(
-        self, scaling="1/sqrt(k)", sparseness=1.0, bias_scale=1.0, bias_mean=0.0
+        self,
+        scaling="1/sqrt(k)",
+        sparseness=1.0,
+        bias_scale=1.0,
+        bias_mean=0.0,
+        dtype=torch.float32,
     ):
         self.scaling = scaling
         self.sparseness = sparseness
         self.bias_scale = bias_scale
         self.bias_mean = bias_mean
+        self.dtype = dtype
 
     def initialize(self, target):
         if isinstance(target, connections.BaseConnection):
@@ -141,6 +148,9 @@ class Initializer:
         # apply sparseness
         weights = self._apply_sparseness(weights)
 
+        # set dtype
+        weights = weights.to(self.dtype)
+
         # set weights
         with torch.no_grad():
             connection.op.weight.data = weights
@@ -157,7 +167,7 @@ class Initializer:
 
             with torch.no_grad():
                 connection.op.bias.uniform_(
-                    -bound + self.bias_mean, bound + self.bias_mean
+                    -bound + self.bias_mean, bound + self.bias_mean, dtype=self.dtype
                 )
 
     def _get_weights(self, *params):
@@ -247,7 +257,15 @@ class FluctuationDrivenNormalInitializer(Initializer):
     """
 
     def __init__(
-        self, mu_u, xi, nu, timestep, epsilon_calc_mode="numerical", alpha=0.9, **kwargs
+        self,
+        mu_u,
+        xi,
+        nu,
+        timestep,
+        epsilon_calc_mode="numerical",
+        alpha=0.9,
+        weights_scale=1.0,
+        **kwargs
     ):
         super().__init__(
             scaling=None,  # None, as scaling is implemented in the weight sampling
@@ -289,7 +307,11 @@ class FluctuationDrivenNormalInitializer(Initializer):
 
         # Read out relevant attributes from connection object
         n, _ = torch.nn.init._calculate_fan_in_and_fan_out(connection.op.weight)
-        ebar, ehat = self._calc_epsilon(connection.dst)
+
+        if isinstance(connection.dst, nodes.FilterLIFGroup):
+            ebar, ehat = connection.dst.get_epsilon_numerical(self.timestep)
+        else:
+            ebar, ehat = self._calc_epsilon(connection.dst)
 
         mu_w = self.mu_u / (n * self.nu * ebar)
         sigma_w = math.sqrt(
@@ -454,7 +476,13 @@ class FluctuationDrivenExponentialInitializer(FluctuationDrivenNormalInitializer
         """
 
         theta = 1.0  # Theta (firing threshold) is hardcoded as in the LIFGroup code
-        ebar_exc, ehat_exc, ebar_inh, ehat_inh = self._calc_epsilon(dst)
+
+        if isinstance(dst, nodes.Exc2InhLIFGroup):
+            ebar_exc, ehat_exc, ebar_inh, ehat_inh = dst.get_epsilon_numerical(
+                self.timestep
+            )
+        else:
+            ebar_exc, ehat_exc, ebar_inh, ehat_inh = self._calc_epsilon(dst)
 
         # Read out some properties of the afferent connections
         inh_cons = [c for c in dst.afferents if c.is_inhibitory]
@@ -528,10 +556,7 @@ class FluctuationDrivenExponentialInitializer(FluctuationDrivenNormalInitializer
                 * np.sqrt(
                     delta_EI**2 * ehat_exc * N_total_exc_rec
                     + delta_REC**2
-                    * (
-                        N_total_exc_ff * delta_EI**2 * ehat_exc
-                        + ehat_inh * N_total_inh
-                    )
+                    * (N_total_exc_ff * delta_EI**2 * ehat_exc + ehat_inh * N_total_inh)
                 )
                 / (theta * delta_EI * delta_REC)
             )

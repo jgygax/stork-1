@@ -90,6 +90,35 @@ class LowerBoundL2(ActivityRegularizer):
         return reg_loss
 
 
+class PopStdevRegularizer:
+    """Regularize the standard deviation of the population firing rate (for less synchronous activity)."""
+
+    def __init__(self, strength=1.0):
+        """Constructor
+
+        Args:
+            strength (float, optional): Regularizer strengh. Defaults to 1.0.
+        """
+
+        self.strength = float(strength)
+
+    def __call__(self, group):
+        """Expects input with (batch x time x units)"""
+        act = group.get_out_sequence()  # get output
+        act = act.reshape(act.shape[0], act.shape[1], group.nb_units)
+        stdev_pop_fr = torch.std(pop_fr, dim=-1)  # / torch.mean(pop_fr, dim=1)
+        pop_fr = torch.mean(act, dim=1)
+
+        return self.calc_regloss(stdev_pop_fr)
+
+    def calc_regloss(self, stdev):
+        """
+        Args: cnt:    Spikecount
+        """
+        reg_loss = -1 * self.strength * torch.mean(stdev)
+        return reg_loss
+
+
 class WeightL2Regularizer:
     """A mean square target rate regularizer"""
 
