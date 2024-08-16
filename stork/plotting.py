@@ -963,3 +963,107 @@ def plot_input(
     plt.tight_layout()
 
     return fig
+    
+    
+   
+def plot_activity_CST(
+    model,
+    data,
+    nb_samples=5,
+    figsize=(10, 5),
+    dpi=250,
+    marker=".",
+    point_size=5,
+    point_alpha=1,
+    pos=(0, -1),
+    off=(0, -0.05),
+    turn_ro_axis_off=True,
+):
+    print("plotting CST snapshot")
+
+    # Run model once and get activities
+    scores = model.evaluate(data, one_batch=True)
+
+    inp = model.input_group.get_flattened_out_sequence().detach().cpu().numpy()
+    hidden_groups = model.groups[1:-1]
+    hid_activity = [
+        g.get_flattened_out_sequence().detach().cpu().numpy() for g in hidden_groups
+    ]
+    out_group = model.out.detach().cpu().numpy()
+    labels = [l for d, l in data]
+
+    nb_groups = len(hidden_groups)
+    nb_total_units = (
+        np.sum([g.nb_units for g in hidden_groups]) + model.input_group.nb_units
+    )
+    hr = (
+        [4 * model.input_group.nb_units / nb_total_units]
+        + [4 * g.nb_units / nb_total_units for g in hidden_groups]
+        + [0.5, 0.5]
+    )
+    hr = list(reversed(hr))  # since we are plotting from bottom to top
+
+    fig, ax = plt.subplots(
+        nb_groups + 3,
+        nb_samples,
+        figsize=figsize,
+        dpi=dpi,
+        sharex=True,
+        sharey="row",
+        gridspec_kw={"height_ratios": hr},
+    )
+
+    for i in range(nb_samples):
+        # plot input spikes
+        ax[-1][i].scatter(
+            np.where(inp[i])[0],
+            np.where(inp[i])[1],
+            s=point_size / 2,
+            marker=marker,
+            color="k",
+            alpha=point_alpha,
+        )
+
+        turn_axis_off(ax[-1][i])
+
+        # plot hidden layer spikes
+        for g in range(nb_groups):
+            ax[-(2 + g)][i].scatter(
+                np.where(hid_activity[g][i])[0],
+                np.where(hid_activity[g][i])[1],
+                s=point_size / 2,
+                marker=marker,
+                color="k",
+                alpha=point_alpha,
+            )
+            turn_axis_off(ax[-(2 + g)][i])
+
+            ax[-(2 + g)][0].set_ylabel(
+                hidden_groups[g].name
+                if hidden_groups[g].name is not None
+                else "Hid. %i" % g
+            )
+
+        for line_index, ro_line in enumerate(np.transpose(out_group[i])):
+            ax[line_index][i].plot(
+                labels[i][:, line_index],
+                color="crimson",
+                label="label"
+            )
+            ax[line_index][i].plot(ro_line, color="k", alpha=0.5, label="ro")
+            if turn_ro_axis_off:
+                turn_axis_off(ax[0][i])
+                turn_axis_off(ax[1][i])
+            
+        ax[0][-1].legend()
+
+    dur_50 = 50e-3 / model.time_step
+    # print(dur_10)
+    add_xscalebar(ax[-1][0], dur_50, label="50ms", pos=pos, off=off, fontsize=8)
+
+    ax[-1][0].set_ylabel("Input")
+    ax[0][0].set_ylabel(f"$v_X$")
+    ax[1][0].set_ylabel(f"$v_Y$")
+    plt.tight_layout()
+
+
