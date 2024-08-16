@@ -4,8 +4,8 @@ import time
 
 import stork.nodes.base
 from stork.models.base import RecurrentSpikingModel
-from stork.loss_stacks import TemporalCrossEntropyReadoutStack
-from stork.generators import StandardGenerator
+from stork import generators
+from stork import loss_stacks
 
 
 class AnnealingModel(RecurrentSpikingModel):
@@ -52,10 +52,10 @@ class AnnealingModel(RecurrentSpikingModel):
         if loss_stack is not None:
             self.loss_stack = loss_stack
         else:
-            self.loss_stack = TemporalCrossEntropyReadoutStack()
+            self.loss_stack = loss_stacks.SumOfSoftmaxCrossEntropy()
 
         if generator is None:
-            self.data_generator_ = StandardGenerator()
+            self.data_generator_ = generators.StandardGenerator()
         else:
             self.data_generator_ = generator
 

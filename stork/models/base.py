@@ -5,9 +5,9 @@ import torch
 import torch.nn as nn
 
 import stork.nodes.base
-from . import generators
-from . import loss_stacks
-from . import monitors
+from stork import generators
+from stork import loss_stacks
+from stork import monitors
 
 import logging
 
@@ -69,7 +69,7 @@ class RecurrentSpikingModel(nn.Module):
         if loss_stack is not None:
             self.loss_stack = loss_stack
         else:
-            self.loss_stack = loss_stacks.TemporalCrossEntropyReadoutStack()
+            self.loss_stack = loss_stacks.SumOfSoftmaxCrossEntropy()
 
         if generator is None:
             self.data_generator_ = generators.StandardGenerator()
@@ -527,7 +527,7 @@ class RecurrentSpikingModel(nn.Module):
         self.prepare_data(dataset)
 
         # Prepare a list for each monitor to hold the batches
-        results = {mon.key + "-" + str(mon.group.name): [] for mon in self.monitors}
+        results = {mon.name + "-" + str(mon.group.name): [] for mon in self.monitors}
         for local_X, local_y in self.data_generator(dataset, shuffle=False):
             for m in self.monitors:
                 m.reset()
@@ -537,7 +537,7 @@ class RecurrentSpikingModel(nn.Module):
             )
 
             for k, mon in enumerate(self.monitors):
-                results[mon.key + "-" + str(mon.group.name)].append(mon.get_data())
+                results[mon.name + "-" + str(mon.group.name)].append(mon.get_data())
 
         for k, v in results.items():
             results[k] = torch.cat(v, dim=0)

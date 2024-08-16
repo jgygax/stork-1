@@ -3,8 +3,8 @@ import numpy as np
 
 import stork.nodes.base
 from stork.models.base import RecurrentSpikingModel
-from stork.loss_stacks import TemporalCrossEntropyReadoutStack, FiringRateReconstructionLoss
-from stork.generators import StandardGenerator
+from stork import generators
+from stork import loss_stacks
 
 
 class DoubleLossRecSpikingModel(RecurrentSpikingModel):
@@ -68,14 +68,14 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
         if loss_AE is not None:
             self.loss_AE = loss_AE
         else:
-            self.loss_AE = FiringRateReconstructionLoss()
+            self.loss_AE = loss_stacks.FiringRateReconstructionLoss()
         if loss_class is not None:
             self.loss_class = loss_class
         else:
-            self.loss_class = TemporalCrossEntropyReadoutStack()
+            self.loss_class = loss_stacks.SumOfSoftmaxCrossEntropy()
 
         if generator is None:
-            self.data_generator_ = StandardGenerator()
+            self.data_generator_ = generators.StandardGenerator()
         else:
             self.data_generator_ = generator
 
@@ -118,7 +118,7 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
         self.prepare_data(dataset)
 
         # Prepare a list for each monitor to hold the batches
-        results = {mon.key + "-" + str(mon.group.name): [] for mon in self.monitors}
+        results = {mon.name + "-" + str(mon.group.name): [] for mon in self.monitors}
         for local_X, local_y in self.data_generator(dataset, shuffle=False):
             for m in self.monitors:
                 m.reset()
@@ -128,7 +128,7 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
             )
 
             for k, mon in enumerate(self.monitors):
-                results[mon.key + "-" + str(mon.group.name)].append(mon.get_data())
+                results[mon.name + "-" + str(mon.group.name)].append(mon.get_data())
 
         for k, v in results.items():
             results[k] = torch.cat(v, dim=0)

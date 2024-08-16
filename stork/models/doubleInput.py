@@ -4,8 +4,9 @@ import numpy as np
 
 import stork.nodes.base
 from stork.models.base import RecurrentSpikingModel
-from stork.loss_stacks import TemporalCrossEntropyReadoutStack
-from stork.generators import StandardGenerator
+from stork import generators
+from stork import loss_stacks
+
 
 class DoubleInputRecSpikingModel(RecurrentSpikingModel):
     def __init__(
@@ -62,15 +63,15 @@ class DoubleInputRecSpikingModel(RecurrentSpikingModel):
         if loss_stack is not None:
             self.loss_stack = loss_stack
         else:
-            self.loss_stack = TemporalCrossEntropyReadoutStack()
+            self.loss_stack = loss_stacks.SumOfSoftmaxCrossEntropy()
 
         if generator1 is None:
-            self.data_generator1_ = StandardGenerator()
+            self.data_generator1_ = generators.StandardGenerator()
         else:
             self.data_generator1_ = generator1
 
         if generator2 is None:
-            self.data_generator2_ = StandardGenerator()
+            self.data_generator2_ = generators.StandardGenerator()
         else:
             self.data_generator2_ = generator2
 
