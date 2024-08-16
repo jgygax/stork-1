@@ -291,10 +291,10 @@ class FluctuationDrivenNormalInitializer(Initializer):
         # Read out relevant attributes from connection object
         n, _ = torch.nn.init._calculate_fan_in_and_fan_out(connection.op.weight)
 
-        if isinstance(connection.dst, nodes.FilterLIFGroup):
-            ebar, ehat = connection.dst.get_epsilon_numerical(self.timestep)
-        else:
-            ebar, ehat = self._calc_epsilon(connection.dst)
+        # if isinstance(connection.dst, nodes.FilterLIFGroup):
+        #     ebar, ehat = connection.dst.get_epsilon_numerical(self.timestep)
+        # else:
+        ebar, ehat = self._calc_epsilon(connection.dst)
 
         mu_w = self.mu_u / (n * self.nu * ebar)
         sigma_w = math.sqrt(
