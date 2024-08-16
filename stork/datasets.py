@@ -517,7 +517,6 @@ def split_dataset(X, y, splits=[0.8, 0.2], shuffle=True):
     Returns:
         List containing tuples of (x_train, y_train), (x_test, y_test), etc ...
     """
-
     splits = np.array(splits)
 
     if (splits <= 0).any():

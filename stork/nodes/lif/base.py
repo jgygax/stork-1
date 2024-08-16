@@ -124,3 +124,7 @@ class LIFGroup(CellGroup):
         self.out = self.states["out"] = new_out
         self.mem = self.states["mem"] = new_mem
         self.syn = self.states["syn"] = new_syn
+
+
+class FilterLIFGroup(LIFGroup):
+    pass
