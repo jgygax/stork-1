@@ -517,6 +517,7 @@ def split_dataset(X, y, splits=[0.8, 0.2], shuffle=True):
     Returns:
         List containing tuples of (x_train, y_train), (x_test, y_test), etc ...
     """
+
     splits = np.array(splits)
 
     if (splits <= 0).any():
@@ -526,15 +527,10 @@ def split_dataset(X, y, splits=[0.8, 0.2], shuffle=True):
     splits /= splits.sum()
 
     if shuffle:
-        try:
-            idx = np.arange(len(X), dtype=np.int_)
-            np.random.shuffle(idx)
-            X = X[idx]
-            y = y[idx]
-        except:
-            perm = torch.randperm(len(X))
-            X = [X[i] for i in perm]
-            y = [y[i] for i in perm]
+        idx = np.arange(len(X), dtype=np.int_)
+        np.random.shuffle(idx)
+        X = X[idx]
+        y = y[idx]
 
     start = 0
     sets = []
@@ -771,6 +767,7 @@ class PoissonDataset(SpikingDataset):
         X = (torch.rand(self.nb_steps, self.nb_units) < p).float()
         y = self.labels[index]
         return X, y
+
 
 class RasDataset(SpikingDataset):
     def __init__(

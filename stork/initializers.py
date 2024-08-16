@@ -148,12 +148,9 @@ class Initializer:
         # apply sparseness
         weights = self._apply_sparseness(weights)
 
-        # set dtype
-        weights = weights.to(self.dtype)
-
         # set weights
         with torch.no_grad():
-            connection.op.weight.data = weights
+            connection.op.weight.data = weights.type(self.dtype)
 
     def _set_biases(self, connection):
         """
@@ -167,8 +164,9 @@ class Initializer:
 
             with torch.no_grad():
                 connection.op.bias.uniform_(
-                    -bound + self.bias_mean, bound + self.bias_mean, dtype=self.dtype
+                    -bound + self.bias_mean, bound + self.bias_mean
                 )
+                connection.op.bias.data = connection.op.bias.data.type(self.dtype)
 
     def _get_weights(self, *params):
         raise NotImplementedError
@@ -257,15 +255,7 @@ class FluctuationDrivenNormalInitializer(Initializer):
     """
 
     def __init__(
-        self,
-        mu_u,
-        xi,
-        nu,
-        timestep,
-        epsilon_calc_mode="numerical",
-        alpha=0.9,
-        weights_scale=1.0,
-        **kwargs
+        self, mu_u, xi, nu, timestep, epsilon_calc_mode="numerical", alpha=0.9, **kwargs
     ):
         super().__init__(
             scaling=None,  # None, as scaling is implemented in the weight sampling
