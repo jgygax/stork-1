@@ -42,6 +42,24 @@ class FanOutGroup(CellGroup):
         self.out = torch.repeat_interleave(inputs, self.fanout, self.dim_with_batch)
 
 
+class AverageReadouts(CellGroup):
+    """Average over different readout groups"""
+
+    def __init__(self, parent_groups):
+        self.parent_groups = parent_groups
+        super(AverageReadouts, self).__init__(parent_groups[0].shape)
+
+    def forward(self):
+        x = []
+        for pg in self.parent_groups:
+            x.append(pg.out)
+
+        x = torch.stack(x)
+        x = torch.mean(x, dim=0)
+
+        self.out = x
+
+
 class TorchOp(CellGroup):
     """Apply an arbitrary torch op to the output of a dedicated parent neuron group at every time step."""
 

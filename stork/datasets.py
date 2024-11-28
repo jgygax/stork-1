@@ -727,7 +727,7 @@ class PoissonDataset(SpikingDataset):
         stop_frac=0.8,
         bg_act=0.0,
     ):
-        """This dataset takes standard (vision) datasets as input and provides a poisson dataset.
+        """This dataset takes standard (vision) datasets as input and provides a time to first spike dataset.
 
         Args:
             dataset: The conventional analog dataset as a tuple (X,y)
@@ -779,7 +779,6 @@ class RasDataset(SpikingDataset):
         p_insert=0.0,
         sigma_t=0.0,
         time_scale=1,
-        dtype=torch.long,
     ):
         """
         This converter provides an interface for standard Ras datasets to dense tensor format.
@@ -814,8 +813,7 @@ class RasDataset(SpikingDataset):
         self.data = Xscaled
         self.labels = labels
         if type(self.labels) == torch.tensor:
-            self.labels = torch.cast(labels, dtype=dtype)
-        self.dtype = dtype
+            self.labels = torch.cast(labels, dtype=torch.long)
 
     def __len__(self):
         "Returns the total number of samples in dataset"
@@ -829,7 +827,7 @@ class RasDataset(SpikingDataset):
 
         times = times.long()
 
-        X = torch.zeros((self.nb_steps, self.nb_units), dtype=self.dtype)
+        X = torch.zeros((self.nb_steps, self.nb_units))
         X[times, units] = 1.0
         y = self.labels[index]
 

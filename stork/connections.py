@@ -56,6 +56,9 @@ class BaseConnection(core.NetworkNode):
     def apply_constraints(self):
         raise NotImplementedError
 
+    def reset_state(self, batchsize):
+        pass
+
 
 class Connection(BaseConnection):
     def __init__(

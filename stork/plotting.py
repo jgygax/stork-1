@@ -1075,9 +1075,8 @@ def plot_input(
     plt.tight_layout()
 
     return fig
-    
-    
-   
+
+
 def plot_activity_CST(
     model,
     data,
@@ -1158,15 +1157,13 @@ def plot_activity_CST(
 
         for line_index, ro_line in enumerate(np.transpose(out_group[i])):
             ax[line_index][i].plot(
-                labels[i][:, line_index],
-                color="crimson",
-                label="label"
+                labels[i][:, line_index], color="crimson", label="label"
             )
             ax[line_index][i].plot(ro_line, color="k", alpha=0.5, label="ro")
             if turn_ro_axis_off:
                 turn_axis_off(ax[0][i])
                 turn_axis_off(ax[1][i])
-            
+
         ax[0][-1].legend()
 
     dur_50 = 50e-3 / model.time_step
@@ -1177,5 +1174,3 @@ def plot_activity_CST(
     ax[0][0].set_ylabel(f"$v_X$")
     ax[1][0].set_ylabel(f"$v_Y$")
     plt.tight_layout()
-
-

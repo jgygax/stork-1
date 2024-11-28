@@ -16,7 +16,7 @@ from .utils import get_lif_kernel
 # # # # # # # # # #
 
 
-def _get_epsilon(calc_mode, tau_mem, tau_syn, timestep=1e-3):
+def _get_epsilon(calc_mode, tau_mem, tau_syn=None, timestep=1e-3):
     if calc_mode == "analytical":
         return _epsilon_analytical(tau_mem, tau_syn)
 
@@ -27,7 +27,14 @@ def _get_epsilon(calc_mode, tau_mem, tau_syn, timestep=1e-3):
         raise ValueError("invalid calc mode for epsilon")
 
 
-def _epsilon_analytical(tau_mem, tau_syn):
+def _epsilon_analytical(tau_mem, tau_syn=None):
+    if tau_syn is None:
+        # using delta synapses
+        epsilon_bar = tau_mem
+        epsilon_hat = tau_mem / 2
+
+        return epsilon_bar, epsilon_hat
+
     epsilon_bar = tau_syn
     epsilon_hat = (tau_syn**2) / (2 * (tau_syn + tau_mem))
 
@@ -59,6 +66,7 @@ class Initializer:
         bias_mean=0.0,
         dtype=torch.float32,
     ):
+
         self.scaling = scaling
         self.sparseness = sparseness
         self.bias_scale = bias_scale
@@ -66,6 +74,7 @@ class Initializer:
         self.dtype = dtype
 
     def initialize(self, target):
+
         if isinstance(target, connections.BaseConnection):
             self.initialize_connection(target)
 
@@ -101,6 +110,7 @@ class Initializer:
             return weights
 
         elif self.scaling == "1/sqrt(k)":
+
             return weights / math.sqrt(fan_in)
 
         elif self.scaling == "1/k":
@@ -178,6 +188,7 @@ class DistInitializer(Initializer):
     """
 
     def __init__(self, dist=dists.Normal(0, 1), **kwargs):
+
         super().__init__(**kwargs)
 
         # assert validity of distribution object
@@ -191,6 +202,7 @@ class DistInitializer(Initializer):
         return self.dist.sample(shape)
 
     def initialize_connection(self, connection):
+
         # Sample weights
         weights = self._get_weights(connection)
 
@@ -199,7 +211,9 @@ class DistInitializer(Initializer):
 
 
 class KaimingNormalInitializer(Initializer):
+
     def __init__(self, gain=1.0, **kwargs):
+
         super().__init__(
             scaling=None,  # Fixed to None, as scaling is implemented in the weight sampling
             **kwargs
@@ -208,6 +222,7 @@ class KaimingNormalInitializer(Initializer):
         self.gain = gain
 
     def _get_weights(self, connection):
+
         fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(connection.op.weight)
 
         # get distribution
@@ -221,6 +236,7 @@ class KaimingNormalInitializer(Initializer):
         return weights
 
     def initialize_connection(self, connection):
+
         # Sample weights
         weights = self._get_weights(connection)
 
@@ -257,6 +273,7 @@ class FluctuationDrivenNormalInitializer(Initializer):
     def __init__(
         self, mu_u, xi, nu, timestep, epsilon_calc_mode="numerical", alpha=0.9, **kwargs
     ):
+
         super().__init__(
             scaling=None,  # None, as scaling is implemented in the weight sampling
             **kwargs
@@ -274,13 +291,20 @@ class FluctuationDrivenNormalInitializer(Initializer):
         Calculates epsilon_bar and epsilon_hat, the integrals of the PSP kernel from a target
         neuron group `dst`
         """
+        tau_mem = dst.tau_mem
+        if isinstance(dst, nodes.DeltaSynapseLIFGroup):
+            tau_syn = None
+            self.epsilon_calc_mode = "analytical"
+        else:
+            tau_syn = dst.tau_syn
         ebar, ehat = _get_epsilon(
-            self.epsilon_calc_mode, dst.tau_mem, dst.tau_syn, self.timestep
+            self.epsilon_calc_mode, tau_mem, tau_syn, self.timestep
         )
 
         return ebar, ehat
 
     def _get_weights(self, connection, mu_w, sigma_w):
+
         shape = connection.op.weight.shape
 
         # sample weights
@@ -357,6 +381,7 @@ class FluctuationDrivenNormalInitializer(Initializer):
         params = []
 
         for c in dst.afferents:
+
             # Number of presynaptic neurons
             N, _ = torch.nn.init._calculate_fan_in_and_fan_out(c.op.weight)
 
@@ -381,14 +406,17 @@ class FluctuationDrivenNormalInitializer(Initializer):
         return params
 
     def initialize_layer(self, layer):
+
         # Loop through each population in this layer
         for neurons in layer.neurons:
+
             # Consider all afferents to this population
             # and compute weight parameters for each connection
             weight_params = self._get_weight_parameters_dst(neurons)
 
             # Initialize each connection
             for idx, connection in enumerate(neurons.afferents):
+
                 # Read out parameters for weight distribution
                 mu_w, sigma_w = weight_params[idx]
                 # sample weights
@@ -407,6 +435,7 @@ class FluctuationDrivenCenteredNormalInitializer(FluctuationDrivenNormalInitiali
     def __init__(
         self, sigma_u, nu, timestep, epsilon_calc_mode="numerical", alpha=0.9, **kwargs
     ):
+
         super().__init__(
             mu_u=0.0,
             xi=1 / sigma_u,
@@ -419,9 +448,11 @@ class FluctuationDrivenCenteredNormalInitializer(FluctuationDrivenNormalInitiali
 
 
 class FluctuationDrivenExponentialInitializer(FluctuationDrivenNormalInitializer):
+
     def __init__(
         self, sigma_u, nu, timestep, epsilon_calc_mode="numerical", alpha=0.9, **kwargs
     ):
+
         super().__init__(
             mu_u=0.0,  # Fixed to balanced state
             xi=1 / sigma_u,
@@ -465,7 +496,7 @@ class FluctuationDrivenExponentialInitializer(FluctuationDrivenNormalInitializer
         neuron group `dst`
         """
 
-        theta = 1.0  # Theta (firing threshold) is hardcoded as in the LIFGroup code
+        theta = 1  # Theta (firing threshold) is hardcoded as in the LIFGroup code
 
         if isinstance(dst, nodes.Exc2InhLIFGroup):
             ebar_exc, ehat_exc, ebar_inh, ehat_inh = dst.get_epsilon_numerical(
@@ -529,6 +560,7 @@ class FluctuationDrivenExponentialInitializer(FluctuationDrivenNormalInitializer
 
         # If there is recurrent excitation, use alpha scaling factor
         if nb_exc_rec >= 1:
+
             alpha = self.alpha
 
             delta_REC = np.sqrt(
@@ -583,8 +615,10 @@ class FluctuationDrivenExponentialInitializer(FluctuationDrivenNormalInitializer
         return params
 
     def initialize_layer(self, layer):
+
         # Loop through each population in this layer
         for neurons in layer.neurons:
+
             # Consider all afferents to this population
             # and compute weight parameters for each connection
             weight_params = self._get_weight_parameters_dst(neurons)
@@ -600,9 +634,11 @@ class FluctuationDrivenExponentialInitializer(FluctuationDrivenNormalInitializer
 
 
 class SpikeInitLogNormalInitializer(FluctuationDrivenNormalInitializer):
+
     def __init__(
         self, sigma_u, nu, timestep, epsilon_calc_mode="numerical", alpha=0.9, **kwargs
     ):
+
         super().__init__(
             mu_u=0.0,  # Fixed to balanced state
             xi=1 / sigma_u,
@@ -704,6 +740,7 @@ class SpikeInitLogNormalInitializer(FluctuationDrivenNormalInitializer):
 
         # If there is recurrent excitation, use alpha scaling factor
         if nb_exc_rec >= 1:
+
             alpha = self.alpha
 
             delta_REC = 1 / 2 * np.log(
@@ -786,8 +823,10 @@ class SpikeInitLogNormalInitializer(FluctuationDrivenNormalInitializer):
         return params
 
     def initialize_layer(self, layer):
+
         # Loop through each population in this layer
         for neurons in layer.neurons:
+
             # Consider all afferents to this population
             # and compute weight parameters for each connection
             weight_params = self._get_weight_parameters_dst(neurons)

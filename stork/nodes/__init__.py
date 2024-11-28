@@ -1,14 +1,7 @@
 from .base import CellGroup
-from .readout import ReadoutGroup
-from .special import FanOutGroup, TorchOp, MaxPool1d, MaxPool2d
-from .tsodyks_markram_stp import TsodyksMarkramSTP, TsodyksMarkramLearnSTP
-from .input import (
-    InputGroup,
-    RasInputGroup,
-    SparseInputGroup,
-    StaticInputGroup,
-    PoissonStimulus,
-)
+from .readout import ReadoutGroup, DeltaSynapseReadoutGroup
+from .special import FanOutGroup, TorchOp, MaxPool1d, MaxPool2d, AverageReadouts
+from .input import InputGroup, RasInputGroup, SparseInputGroup, StaticInputGroup
 from .lif import (
     LIFGroup,
     AdaptiveLIFGroup,
@@ -16,5 +9,6 @@ from .lif import (
     ExcInhLIFGroup,
     ExcInhAdaptiveLIFGroup,
     Exc2InhLIFGroup,
+    DeltaSynapseLIFGroup,
     FilterLIFGroup,
 )

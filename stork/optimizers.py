@@ -46,6 +46,7 @@ class SMORMS3(torch.optim.Optimizer):
 
 
 class SMORMS4(torch.optim.Optimizer):
+
     def __init__(self, params, lr=1e-3, eps=1e-16, min_mem_decay=0.5):
         """
         SMORMS4 optimizer. A modfied SMORMS3 for improved stability and performance.
