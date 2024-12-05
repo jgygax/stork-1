@@ -517,6 +517,7 @@ def split_dataset(X, y, splits=[0.8, 0.2], shuffle=True):
     Returns:
         List containing tuples of (x_train, y_train), (x_test, y_test), etc ...
     """
+
     splits = np.array(splits)
 
     if (splits <= 0).any():
@@ -772,6 +773,7 @@ class PoissonDataset(SpikingDataset):
         y = self.labels[index]
         return X, y
 
+
 class RasDataset(SpikingDataset):
     def __init__(
         self,
@@ -782,7 +784,8 @@ class RasDataset(SpikingDataset):
         p_insert=0.0,
         sigma_t=0.0,
         time_scale=1,
-        dtype=torch.long,
+        dtype_label=torch.long,
+        dtype_data=torch.float,
     ):
         """
         This converter provides an interface for standard Ras datasets to dense tensor format.
@@ -817,8 +820,9 @@ class RasDataset(SpikingDataset):
         self.data = Xscaled
         self.labels = labels
         if type(self.labels) == torch.tensor:
-            self.labels = torch.cast(labels, dtype=dtype)
-        self.dtype = dtype
+            self.labels = torch.cast(labels, dtype=dtype_label)
+        self.dtype_label = dtype_label
+        self.dtype_data = dtype_data
 
     def __len__(self):
         "Returns the total number of samples in dataset"
@@ -832,7 +836,7 @@ class RasDataset(SpikingDataset):
 
         times = times.long()
 
-        X = torch.zeros((self.nb_steps, self.nb_units), dtype=self.dtype)
+        X = torch.zeros((self.nb_steps, self.nb_units), dtype=self.dtype_data)
         X[times, units] = 1.0
         y = self.labels[index]
 
