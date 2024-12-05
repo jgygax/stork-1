@@ -145,6 +145,90 @@ class MaxOverTimeFocalLoss(LossStack):
         return self.compute_loss(output, targets)
 
 
+class SumOfSoftmaxCrossEntropy(LossStack):
+    """
+    Readout stack that computes softmax across neurons at each time point,
+    sums over time and then applies the cross-entropy loss.
+    """
+
+    def __init__(self, time_dimension=1):
+        super().__init__()
+        self.neg_log_likelihood_loss = nn.NLLLoss()
+        self.time_dim = time_dimension
+        self.log_softmax = nn.LogSoftmax(dim=1)
+        self.softmax = nn.Softmax(
+            dim=-1
+        )  # Across units in [batch x time x units] output
+
+    def acc_fn(self, log_p_y, target_labels):
+        """Computes classification accuracy from log_p_y and corresponding target labels
+
+        Args:
+            log_p_y: The log softmax output (log p_y_given_x) of the model.
+            target_labels: The integer target labels (not one hot encoding).
+
+        Returns:
+            Float of mean classification accuracy.
+        """
+        _, pred_labels = torch.max(log_p_y, dim=self.time_dim)
+        a = pred_labels == target_labels
+        return (1.0 * a.cpu().numpy()).mean()
+
+    def get_metric_names(self):
+        return ["acc"]
+
+    def compute_loss(self, output, targets):
+        """Computes crossentropy loss on sum of softmax over neurons at each time point"""
+        # Softmax at every timesteps
+        p_y_t = self.softmax(output)  # [batch x time x n_classes]
+        su = torch.sum(p_y_t, self.time_dim)  # Should be batch x n_classes
+        log_p_y = self.log_softmax(su)  # Should be batch x n_classes
+        loss_value = self.neg_log_likelihood_loss(
+            log_p_y, targets
+        )  # compute supervised loss
+        acc_val = self.acc_fn(log_p_y, targets)
+        self.metrics = [acc_val.item()]
+        return loss_value
+
+    def log_py_given_x(self, output):
+        p_y_t = self.softmax(output)  # [batch x time x n_classes]
+        su = torch.sum(p_y_t, self.time_dim)  # Should be batch x n_classes
+        log_p_y = self.log_softmax(su)  # Should be batch x n_classes
+        return log_p_y
+
+    def predict(self, output):
+        _, pred_labels = torch.max(self.log_py_given_x(output), dim=1)
+        return pred_labels
+
+    def __call__(self, output, targets):
+        return self.compute_loss(output, targets)
+
+
+class MeanOfSoftmaxCrossEntropy(SumOfSoftmaxCrossEntropy):
+
+    def __init__(self, time_dimension=1):
+        super().__init__(time_dimension)
+
+    def compute_loss(self, output, targets):
+        """Computes crossentropy loss on sum of softmax over neurons at each time point"""
+        # Softmax at every timesteps
+        p_y_t = self.softmax(output)  # [batch x time x n_classes]
+        su = torch.mean(p_y_t, self.time_dim)  # Should be batch x n_classes
+        log_p_y = self.log_softmax(su)  # Should be batch x n_classes
+        loss_value = self.neg_log_likelihood_loss(
+            log_p_y, targets
+        )  # compute supervised loss
+        acc_val = self.acc_fn(log_p_y, targets)
+        self.metrics = [acc_val.item()]
+        return loss_value
+
+    def log_py_given_x(self, output):
+        p_y_t = self.softmax(output)  # [batch x time x n_classes]
+        su = torch.mean(p_y_t, self.time_dim)  # Should be batch x n_classes
+        log_p_y = self.log_softmax(su)  # Should be batch x n_classes
+        return log_p_y
+
+
 class SumOverTimeCrossEntropy(LossStack):
     """Loss stack that employs the sum-over-time reduction strategy paired with categorical cross entropy."""
 
@@ -289,6 +373,62 @@ class EveryStepCrossEntropy(LossStack):
         return self.compute_loss(output, targets)
 
 
+class MeanSquareError(LossStack):
+    def __init__(self, mask=None):
+        """
+        Args:
+
+            mask: A ``don't-care'' mask which can be aplied to part of the output
+        """
+        super().__init__()
+        self.msqe_loss = nn.MSELoss()
+        self.mask = mask
+
+    def get_metric_names(self):
+        return []
+
+    def compute_loss(self, output, target):
+        """Computes MSQE loss between output and target."""
+        if self.mask is None:
+            loss_value = self.msqe_loss(output, target)
+        else:
+            loss_value = self.msqe_loss(
+                output * self.mask.expand_as(output),
+                target * self.mask.expand_as(output),
+            )
+        self.metrics = []
+        return loss_value
+
+    def predict(self, output):
+        return output  # here we just return the network output
+
+    def __call__(self, output, targets):
+        return self.compute_loss(output, targets)
+
+
+class FiringRateReconstructionLoss(LossStack):
+    def __init__(self, duration):
+        super().__init__()
+        self.msqe_loss = nn.MSELoss()
+        self.duration = duration
+
+    def get_metric_names(self):
+        return ["fr_loss_mse"]
+
+    def compute_loss(self, output, target):
+        """Computes MSQE loss between output and target."""
+        out_fr = torch.sum(output, dim=1) / self.duration
+        loss_value = self.msqe_loss(out_fr, target)
+        self.metrics = [loss_value.detach().cpu().numpy()]
+        return loss_value
+
+    def predict(self, output):
+        return output  # here we just return the network output
+
+    def __call__(self, output, targets):
+        return self.compute_loss(output, targets)
+
+
 class CSTLossStack(LossStack):
     def __init__(self, mask=None, density_weighting_func=False):
         super().__init__()
@@ -343,7 +483,7 @@ class CSTLossStack(LossStack):
         return self.compute_loss(output, targets)
 
 
-class MeanSquareError(CSTLossStack):
+class CSTMeanSquareError(CSTLossStack):
     def __init__(self, mask=None, density_weighting_func=False):
         super().__init__(mask=mask, density_weighting_func=density_weighting_func)
         self.loss_fn = self._weighted_MSEloss
@@ -355,7 +495,7 @@ class MeanSquareError(CSTLossStack):
             return torch.mean((output - target) ** 2)
 
 
-class RootMeanSquareError(CSTLossStack):
+class CSTRootMeanSquareError(CSTLossStack):
 
     def __init__(self, mask=None, density_weighting_func=False):
         super().__init__(mask=mask, density_weighting_func=density_weighting_func)
@@ -368,7 +508,7 @@ class RootMeanSquareError(CSTLossStack):
             return torch.sqrt(torch.mean((output - target) ** 2))
 
 
-class MeanAbsoluteError(CSTLossStack):
+class CSTMeanAbsoluteError(CSTLossStack):
     def __init__(self, mask=None, density_weighting_func=False):
         super().__init__(mask=mask, density_weighting_func=density_weighting_func)
         self.loss_fn = self._weighted_MAEloss
@@ -380,7 +520,7 @@ class MeanAbsoluteError(CSTLossStack):
             return torch.mean(torch.abs(output - target))
 
 
-class HuberLoss(CSTLossStack):
+class CSTHuberLoss(CSTLossStack):
     def __init__(self, delta=1.0, mask=None, density_weighting_func=False):
 
         if density_weighting_func:
@@ -465,111 +605,3 @@ class DoubleData_MaxOverTimeCrossEntropy(MaxOverTimeCrossEntropy):
 
     def __call__(self, output, targets):
         return self.compute_loss(output, targets)
-
-
-class FiringRateReconstructionLoss(LossStack):
-    def __init__(self, duration):
-        super().__init__()
-        self.msqe_loss = nn.MSELoss()
-        self.duration = duration
-
-    def get_metric_names(self):
-        return ["fr_loss_mse"]
-
-    def compute_loss(self, output, target):
-        """Computes MSQE loss between output and target."""
-        out_fr = torch.sum(output, dim=1) / self.duration
-        loss_value = self.msqe_loss(out_fr, target)
-        self.metrics = [loss_value.detach().cpu().numpy()]
-        return loss_value
-
-    def predict(self, output):
-        return output  # here we just return the network output
-
-    def __call__(self, output, targets):
-        return self.compute_loss(output, targets)
-
-
-
-class SumOfSoftmaxCrossEntropy(LossStack):
-    """
-    Readout stack that computes softmax across neurons at each time point,
-    sums over time and then applies the cross-entropy loss.
-    """
-
-    def __init__(self, time_dimension=1):
-        super().__init__()
-        self.neg_log_likelihood_loss = nn.NLLLoss()
-        self.time_dim = time_dimension
-        self.log_softmax = nn.LogSoftmax(dim=1)
-        self.softmax = nn.Softmax(
-            dim=-1
-        )  # Across units in [batch x time x units] output
-
-    def acc_fn(self, log_p_y, target_labels):
-        """Computes classification accuracy from log_p_y and corresponding target labels
-
-        Args:
-            log_p_y: The log softmax output (log p_y_given_x) of the model.
-            target_labels: The integer target labels (not one hot encoding).
-
-        Returns:
-            Float of mean classification accuracy.
-        """
-        _, pred_labels = torch.max(log_p_y, dim=self.time_dim)
-        a = pred_labels == target_labels
-        return (1.0 * a.cpu().numpy()).mean()
-
-    def get_metric_names(self):
-        return ["acc"]
-
-    def compute_loss(self, output, targets):
-        """Computes crossentropy loss on sum of softmax over neurons at each time point"""
-        # Softmax at every timesteps
-        p_y_t = self.softmax(output)  # [batch x time x n_classes]
-        su = torch.sum(p_y_t, self.time_dim)  # Should be batch x n_classes
-        log_p_y = self.log_softmax(su)  # Should be batch x n_classes
-        loss_value = self.neg_log_likelihood_loss(
-            log_p_y, targets
-        )  # compute supervised loss
-        acc_val = self.acc_fn(log_p_y, targets)
-        self.metrics = [acc_val.item()]
-        return loss_value
-
-    def log_py_given_x(self, output):
-        p_y_t = self.softmax(output)  # [batch x time x n_classes]
-        su = torch.sum(p_y_t, self.time_dim)  # Should be batch x n_classes
-        log_p_y = self.log_softmax(su)  # Should be batch x n_classes
-        return log_p_y
-
-    def predict(self, output):
-        _, pred_labels = torch.max(self.log_py_given_x(output), dim=1)
-        return pred_labels
-
-    def __call__(self, output, targets):
-        return self.compute_loss(output, targets)
-
-
-class MeanOfSoftmaxCrossEntropy(SumOfSoftmaxCrossEntropy):
-
-    def __init__(self, time_dimension=1):
-        super().__init__(time_dimension)
-
-    def compute_loss(self, output, targets):
-        """Computes crossentropy loss on sum of softmax over neurons at each time point"""
-        # Softmax at every timesteps
-        p_y_t = self.softmax(output)  # [batch x time x n_classes]
-        su = torch.mean(p_y_t, self.time_dim)  # Should be batch x n_classes
-        log_p_y = self.log_softmax(su)  # Should be batch x n_classes
-        loss_value = self.neg_log_likelihood_loss(
-            log_p_y, targets
-        )  # compute supervised loss
-        acc_val = self.acc_fn(log_p_y, targets)
-        self.metrics = [acc_val.item()]
-        return loss_value
-
-    def log_py_given_x(self, output):
-        p_y_t = self.softmax(output)  # [batch x time x n_classes]
-        su = torch.mean(p_y_t, self.time_dim)  # Should be batch x n_classes
-        log_p_y = self.log_softmax(su)  # Should be batch x n_classes
-        return log_p_y
