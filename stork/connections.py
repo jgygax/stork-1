@@ -61,32 +61,134 @@ class BaseConnection(core.NetworkNode):
 
 
 class StructuredLinear(nn.Module):
-    def __init__(self, in_features, out_features, mask, requires_grad=True, bias=False):
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        src_blocks=None,
+        dst_blocks=None,
+        mask=None,
+        requires_grad=True,
+        bias=False,
+    ):
         super(StructuredLinear, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+
+        if src_blocks is None:
+            mask = mask
+        else:
+            self.src_blocks = src_blocks
+            self.dst_blocks = dst_blocks
+            mask = self.create_block_diagonal()
+
         assert mask.shape == (
             out_features,
             in_features,
-        ), "Mask dimensions must match (out_features, in_features), but they are {} and not {}".format(
-            mask.shape, (out_features, in_features)
-        )
-        self.in_features = in_features
-        self.out_features = out_features
-        self.mask = nn.Parameter(mask, requires_grad=False)  # Keep mask constant
+        ), f"Mask dimensions must match (out_features, in_features), got {mask.shape} and {(out_features, in_features)}"
+
+        self.register_buffer("mask", mask)  # Now register it as a buffer
+
+        # Trainable weights and optional bias
         self.weight = nn.Parameter(
             torch.randn(out_features, in_features, requires_grad=requires_grad)
         )
-        if bias:
-            self.bias = nn.Parameter(
-                torch.zeros(out_features), requires_grad=requires_grad
-            )
-        else:
-            self.bias = None
-        self.masked_weight = self.weight * self.mask
+        self.bias = (
+            nn.Parameter(torch.zeros(out_features), requires_grad=requires_grad)
+            if bias
+            else None
+        )
+
+        # Precompute masked weights initially
+        self.register_buffer("masked_weight", self.weight * self.mask)
 
     def forward(self, x):
-        # Apply mask to weights
-        self.masked_weight = self.weight * self.mask
+        # Update masked_weight only if weights are updated
+        if self.training:
+            self.masked_weight = self.weight * self.mask
         return nn.functional.linear(x, self.masked_weight, self.bias)
+
+    def create_block_diagonal(self):
+        assert (
+            self.in_features % self.src_blocks == 0
+            and self.out_features % self.dst_blocks == 0
+        ), "Source and destination shapes must be divisible by their respective block sizes"
+
+        # Number of blocks
+        num_blocks = self.in_features // self.src_blocks
+
+        # Create one block and repeat to form a block diagonal
+        block = torch.ones(self.dst_blocks, self.src_blocks)
+        matrix = torch.zeros(self.out_features, self.in_features)
+        for i in range(num_blocks):
+            matrix[
+                i * self.dst_blocks : (i + 1) * self.dst_blocks,
+                i * self.src_blocks : (i + 1) * self.src_blocks,
+            ] = block
+
+        return matrix
+
+
+class StructuredLinearBlocks(nn.Module):
+    def __init__(
+        self,
+        in_features,
+        out_features,
+        src_blocks=None,
+        dst_blocks=None,
+        requires_grad=True,
+        bias=False,
+    ):
+        super(StructuredLinear, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.src_blocks = src_blocks
+        self.dst_blocks = dst_blocks
+        self.requires_grad = requires_grad
+
+        # Verify divisibility
+        assert (
+            self.in_features % self.src_blocks == 0
+            and self.out_features % self.dst_blocks == 0
+        ), "Source and destination shapes must be divisible by their respective block sizes"
+
+        # Number of blocks
+        self.num_blocks = self.in_features // self.src_blocks
+
+        # Create trainable blocks and register them as parameters
+        self.blocks = nn.ParameterList(
+            [
+                nn.Parameter(
+                    torch.randn(
+                        self.dst_blocks,
+                        self.src_blocks,
+                        requires_grad=self.requires_grad,
+                    )
+                )
+                for _ in range(self.num_blocks)
+            ]
+        )
+
+        # Optional bias
+        self.bias = (
+            nn.Parameter(torch.zeros(out_features), requires_grad=requires_grad)
+            if bias
+            else None
+        )
+
+    def forward(self, x):
+        # Initialize the weight matrix
+        weight = torch.zeros(self.out_features, self.in_features, device=x.device)
+
+        # Populate weight matrix using the block parameters
+        for i, block in enumerate(self.blocks):
+            weight[
+                i * self.dst_blocks : (i + 1) * self.dst_blocks,
+                i * self.src_blocks : (i + 1) * self.src_blocks,
+            ] = block
+
+        # Perform the linear operation
+        return nn.functional.linear(x, weight, self.bias)
 
 
 class Connection(BaseConnection):
@@ -103,7 +205,7 @@ class Connection(BaseConnection):
         name=None,
         regularizers=None,
         constraints=None,
-        **kwargs
+        **kwargs,
     ):
         super(Connection, self).__init__(
             src,
@@ -124,8 +226,6 @@ class Connection(BaseConnection):
             self.op = operation(src.shape[0], dst.shape[0], bias=bias, **kwargs)
         for name, param in self.op.named_parameters():
             param.requires_grad = requires_grad
-            if "mask" in name:
-                param.requires_grad = False
 
     def configure(self, batch_size, nb_steps, time_step, device, dtype):
         super().configure(batch_size, nb_steps, time_step, device, dtype)
@@ -140,7 +240,17 @@ class Connection(BaseConnection):
         self.op.weight.data += torch.from_numpy(A)
 
     def get_weights(self):
-        return self.op.weight
+        try:
+            return self.op.weight
+        except:
+            weight = torch.zeros(self.op.out_features, self.op.in_features)
+
+            for i, block in enumerate(self.op.blocks):
+                weight[
+                    i * self.op.dst_blocks : (i + 1) * self.op.dst_blocks,
+                    i * self.op.src_blocks : (i + 1) * self.op.src_blocks,
+                ] = block
+            return weight
 
     def get_regularizer_loss(self):
         reg_loss = torch.tensor(0.0, device=self.device)
