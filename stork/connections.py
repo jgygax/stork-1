@@ -60,6 +60,35 @@ class BaseConnection(core.NetworkNode):
         pass
 
 
+class StructuredLinear(nn.Module):
+    def __init__(self, in_features, out_features, mask, requires_grad=True, bias=False):
+        super(StructuredLinear, self).__init__()
+        assert mask.shape == (
+            out_features,
+            in_features,
+        ), "Mask dimensions must match (out_features, in_features), but they are {} and not {}".format(
+            mask.shape, (out_features, in_features)
+        )
+        self.in_features = in_features
+        self.out_features = out_features
+        self.mask = nn.Parameter(mask, requires_grad=False)  # Keep mask constant
+        self.weight = nn.Parameter(
+            torch.randn(out_features, in_features, requires_grad=requires_grad)
+        )
+        if bias:
+            self.bias = nn.Parameter(
+                torch.zeros(out_features), requires_grad=requires_grad
+            )
+        else:
+            self.bias = None
+        self.masked_weight = self.weight * self.mask
+
+    def forward(self, x):
+        # Apply mask to weights
+        self.masked_weight = self.weight * self.mask
+        return nn.functional.linear(x, self.masked_weight, self.bias)
+
+
 class Connection(BaseConnection):
     def __init__(
         self,
@@ -93,8 +122,10 @@ class Connection(BaseConnection):
             self.op = operation(src.nb_units, dst.shape[0], bias=bias, **kwargs)
         else:
             self.op = operation(src.shape[0], dst.shape[0], bias=bias, **kwargs)
-        for param in self.op.parameters():
+        for name, param in self.op.named_parameters():
             param.requires_grad = requires_grad
+            if "mask" in name:
+                param.requires_grad = False
 
     def configure(self, batch_size, nb_steps, time_step, device, dtype):
         super().configure(batch_size, nb_steps, time_step, device, dtype)
