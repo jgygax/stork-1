@@ -16,3 +16,4 @@ from . import regularizers
 from . import utils
 
 __version__ = "0.1.1"
+print("using my stork version - SG theory")
