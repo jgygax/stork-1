@@ -103,6 +103,8 @@ class Layer(AbstractLayer):
         flatten_input_layer=True,
         neuron_kwargs={},
         connection_kwargs={},
+        ff_connection_kwargs={},
+        rec_connection_kwargs={},
     ) -> None:
         super().__init__(name, model, recurrent)
 
@@ -111,19 +113,24 @@ class Layer(AbstractLayer):
         self.add_neurons(nodes)
 
         # Make afferent connection
+        if len(ff_connection_kwargs) == 0:
+            ff_connection_kwargs = connection_kwargs
+        if len(rec_connection_kwargs) == 0:
+            rec_connection_kwargs = connection_kwargs
+
         con = connection_class(
             input_group,
             nodes,
             regularizers=w_regs,
             flatten_input=flatten_input_layer,
-            **connection_kwargs
+            **ff_connection_kwargs
         )
         self.add_connection(con)
 
         # Make recurrent connection
         if recurrent:
             con = connection_class(
-                nodes, nodes, regularizers=w_regs, **connection_kwargs
+                src=nodes, dst=nodes, regularizers=w_regs, **rec_connection_kwargs
             )
             self.add_connection(con)
 
