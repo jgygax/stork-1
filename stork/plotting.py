@@ -651,16 +651,23 @@ def plot_classifying_autoencoder_activity(
     point_alpha=1,
     pos=(0, -1),
     off=(0, -0.05),
+    batch_size=None
 ):
+
     print("plotting snapshot")
+
 
     if data is not None:
         labels = [l for d, (d, l) in data]
 
     # Run model once and get activities
-    scores = model.evaluate(data, one_batch=True).tolist()
+    scores = model.evaluate(data, two_batches=True).tolist()
 
     inp = model.input_group.get_flattened_out_sequence().detach().cpu().numpy()
+
+    if batch_size is None:
+        batch_size = len(inp)
+
     hidden_groups = model.groups[1:-2]
     hid_activity = [
         g.get_flattened_out_sequence().detach().cpu().numpy() for g in hidden_groups
@@ -699,7 +706,7 @@ def plot_classifying_autoencoder_activity(
     for i in range(nb_samples):
         # plot and color input spikes
         for idx, inp in enumerate(inps):
-            c = pal[labels[i]]
+            c = pal[labels[i+batch_size]]
             ax[-1][i].scatter(
                 np.where(inp[i])[0],
                 np.where(inp[i])[1],
@@ -753,7 +760,7 @@ def plot_classifying_autoencoder_activity(
         )
 
         for line_index, ro_line in enumerate(np.transpose(out_cl[i])):
-            if line_index == labels[i]:
+            if line_index == labels[i+batch_size]:
                 ax[0][i].plot(ro_line, color=pal[line_index])
             else:
                 ax[0][i].plot(ro_line, color=bg_col, zorder=-5, alpha=0.5)
@@ -1075,9 +1082,9 @@ def plot_input(
     plt.tight_layout()
 
     return fig
-    
-    
-   
+
+
+
 def plot_activity_CST(
     model,
     data,
@@ -1166,7 +1173,7 @@ def plot_activity_CST(
             if turn_ro_axis_off:
                 turn_axis_off(ax[0][i])
                 turn_axis_off(ax[1][i])
-            
+
         ax[0][-1].legend()
 
     dur_50 = 50e-3 / model.time_step
