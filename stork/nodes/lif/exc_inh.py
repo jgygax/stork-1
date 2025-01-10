@@ -18,6 +18,7 @@ class ExcInhLIFGroup(CellGroup):
         **kwargs
     ):
         super(ExcInhLIFGroup, self).__init__(shape, **kwargs)
+        self.act_fn = activation  # added activation as an attribute
         self.spk_nl = activation.apply
         self.tau_mem = tau_mem
         self.tau_exc = tau_exc
@@ -99,10 +100,12 @@ class ExcInhAdaptiveLIFGroup(CellGroup):
         tau_adapt=100e-3,
         adapt_a=0.5,
         sigma_tau=0.0,
+        activation=activations.SuperSpike,
         **kwargs
     ):
         super(ExcInhAdaptiveLIFGroup, self).__init__(shape, **kwargs)
-        self.spk_nl = activations.SuperSpike.apply
+        self.act_fn = activation  # added activation as an attribute
+        self.spk_nl = activation.apply
         self.tau_mem = tau_mem
         self.tau_exc = tau_exc
         self.tau_inh = tau_inh
@@ -155,6 +158,7 @@ class ExcInhAdaptiveLIFGroup(CellGroup):
         self.ada = self.get_state_tensor("out", state=self.ada)
         self.syne = self.get_state_tensor("syne", state=self.syne)
         self.syni = self.get_state_tensor("syni", state=self.syni)
+
 
     def get_spike_and_reset(self, mem):
         out = self.spk_nl(mem - self.thr)
