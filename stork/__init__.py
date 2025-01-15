@@ -18,4 +18,4 @@ from . import plotting_new
 
 __version__ = "0.1.1"
 
-print("using my stork version - reconstructive AE")
+print("using my stork version - EI assemblies")

@@ -279,20 +279,22 @@ class RecurrentSpikingModel(nn.Module):
 
         return total_loss
 
-    def evaluate(self, test_dataset, train_mode=False, one_batch=False):
+    def evaluate(self, test_dataset, train_mode=False, two_batches=False):
         self.train(train_mode)
         self.prepare_data(test_dataset)
         metrics = []
-        for local_X, local_y in self.data_generator(test_dataset, shuffle=False):
+
+        for i, (local_X, local_y) in enumerate(self.data_generator(test_dataset, shuffle=False)):
+            # evaluate only two batches (if needed for plotting)
+            if two_batches and i == 2:
+                break
+
             output = self.forward_pass(local_X, cur_batch_size=len(local_X))
             total_loss = self.get_total_loss(output, local_y)
             # store loss and other metrics
             metrics.append(
                 [self.out_loss.item(), self.reg_loss.item()] + self.loss_stack.metrics
             )
-            # evaluate only one batch (if needed for plotting)
-            if one_batch:
-                break
         return np.mean(np.array(metrics), axis=0)
 
     def regtrain_epoch(self, dataset, shuffle=True):

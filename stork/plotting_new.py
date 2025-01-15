@@ -156,6 +156,8 @@ class ActivityPlotter(Plotter):
         pal=sns.color_palette("muted", n_colors=20),
         bg_col="#AAAAAA",
         scale_spike_rasters=4,
+        readout_layers = [-1],
+        batch_size=None
     ):
         super().__init__()
         self.color_classes = color_classes
@@ -167,6 +169,7 @@ class ActivityPlotter(Plotter):
         self.marker = marker
         self.point_alpha = point_alpha
         self.set_axis = set_axis
+        self.batch_size = batch_size
 
         self.nb_samples = nb_samples
         self.samples = samples
@@ -177,27 +180,28 @@ class ActivityPlotter(Plotter):
 
         self.model = model
         self.data = data
+        self.readout_layers = readout_layers
 
     def get_activities(self):
 
         # Run model once and get activities
-        scores = self.model.evaluate(self.data, one_batch=True).tolist()
+        scores = self.model.evaluate(self.data, two_batches=True).tolist()
+        activities = [g.get_flattened_out_sequence().detach().cpu().numpy() for g in self.model.groups]
 
-        inp = self.model.input_group.get_flattened_out_sequence().detach().cpu().numpy()
-        hidden_groups = self.model.groups[1:-1]
-        hid_activity = [
-            g.get_flattened_out_sequence().detach().cpu().numpy() for g in hidden_groups
-        ]
-        out_group = self.model.out.detach().cpu().numpy()
+        if self.batch_size is None:
+            self.batch_size = len(activities[0])
 
-        return inp, hid_activity, out_group
+        return activities
 
     def get_height_ratios(self):
-        nb_total_units = np.sum([g.nb_units for g in self.model.groups[:-1]])
+        nb_groups = len(self.model.groups)
+        nb_spiking_groups = nb_groups -len(self.readout_layers)
+
+        nb_total_units = np.sum([self.model.groups[g].nb_units for g in range(nb_spiking_groups)])
         hr = [
-            self.scale_spike_rasters * g.nb_units / nb_total_units
-            for g in self.model.groups[:-1]
-        ] + [1]
+            self.scale_spike_rasters * self.model.groups[g].nb_units / nb_total_units
+            for g in range(nb_spiking_groups)
+        ] + [1]*len(self.readout_layers)
         hr = list(reversed(hr))  # since we are plotting from bottom to top
         return hr
 
@@ -220,10 +224,11 @@ class ActivityPlotter(Plotter):
     def plot_hidden(
         self,
         ax,
+        data,
     ):
         self.plot_spike_raster(
             ax,
-            self.data,
+            data,
             self.color,
             self.point_size,
             self.marker,
@@ -232,7 +237,8 @@ class ActivityPlotter(Plotter):
         )
 
     def plot_readout(self, ax, data, label, pal, bg_col):
-
+        if self.tuple_label:
+            label = label[1]
         for line_index, ro_line in enumerate(np.transpose(data)):
             if self.color_classes and line_index == label:
                 ax.plot(ro_line, color=pal[line_index])
@@ -248,13 +254,14 @@ class ActivityPlotter(Plotter):
         self,
     ):
         print("plotting")
-        inp, hid_activity, out_group = self.get_activities()
-        nb_groups = len(hid_activity)
+        activities = self.get_activities()
+        nb_groups = len(self.model.groups)
+        nb_spiking_groups = nb_groups -len(self.readout_layers)
 
         hr = self.get_height_ratios()
 
         fig, ax = plt.subplots(
-            nb_groups + 2,
+            len(hr),
             self.nb_samples,
             figsize=self.figsize,
             dpi=self.dpi,
@@ -268,52 +275,75 @@ class ActivityPlotter(Plotter):
         if self.samples is None:
             self.samples = list(range(self.nb_samples))
 
+
+        ##############################################################################################
+        # Plotting
+        ##############################################################################################
+
+        ylims = {g: (float('inf'), float('-inf')) for g in range(nb_groups)}
         for i, s in enumerate(self.samples):
+
+            self.tuple_label = False
 
             # plot and color input spikes
             if self.color_classes:
-                c = self.pal[self.data[i][1]]
+                try:
+                    c = self.pal[self.data[s+self.batch_size][1]]
+                except:
+                    c = self.pal[self.data[s+self.batch_size][1][1]]
+                    self.tuple_label = True
             else:
                 c = self.bg_col
+
+
+
             self.plot_input(
                 ax[-1, i],
-                inp[s],
+                activities[0][s],
                 c,
             )
+            ax[-1][0].set_ylabel(self.model.groups[0].name)
+
 
             # plot hidden layer spikes
-            for g in range(nb_groups):
+            for g in range(1, nb_spiking_groups):
                 self.plot_hidden(
-                    ax[-(2 + g), i],
-                    hid_activity[g][s],
-                    "k",
-                    self.point_size / 2,
-                    self.marker,
-                    self.point_alpha,
+                    ax[-(1 + g), i],
+                    activities[g][s],
                 )
-                ax[-(2 + g)][0].set_ylabel(self.model.groups[g + 1].name)
+                ax[-(1 + g)][0].set_ylabel(self.model.groups[g].name)
 
                 if i == 0:
-                    ax[-(2 + g)][i].set_yticks([])
+                    ax[-(1 + g)][i].set_yticks([])
 
             # plot readout
-            self.plot_readout(
-                ax[0][i], out_group[i], self.data[i][1], self.pal, self.bg_col
-            )
+            for g in range(nb_spiking_groups, nb_groups):
+                self.plot_readout(
+                    ax[-(1 + g), i], activities[g][s], self.data[s+self.batch_size][1], self.pal, self.bg_col
+                )
+                ax[-(1 + g), 0].set_ylabel(self.model.groups[g].name)
+                ax[-(1 + g)][0].set_yticks([])
+
+                ylims[g] = (min(ylims[g][0], min(activities[g][s].flatten())), max(ylims[g][1], max(activities[g][s].flatten())))
+
 
             ax[-1][i].set_xlabel("Time (s)")
+
+
+        for g in range(nb_spiking_groups,nb_groups):
+            ax[-(1 + g)][0].set_ylim(ylims[g])
+
+
+
+
 
         ax[-1][0].set_ylabel("Input")
         ax[-1][0].set_yticks([])
         ax[-1][0].set_xlim(-3, self.model.nb_time_steps + 3)
 
-        ax[0][0].set_ylabel("Readout")
-        ax[0][0].set_yticks([])
 
         duration = round(self.model.nb_time_steps * self.model.time_step * 10) / 10
         ax[-1][0].set_xticks([0, self.model.nb_time_steps], [0, duration])
-
-        plt.tight_layout()
 
 
 class CurrentInputActivityPlotter(ActivityPlotter):
