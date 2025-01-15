@@ -106,8 +106,8 @@ class PopStdevRegularizer:
         """Expects input with (batch x time x units)"""
         act = group.get_out_sequence()  # get output
         act = act.reshape(act.shape[0], act.shape[1], group.nb_units)
-        stdev_pop_fr = torch.std(pop_fr, dim=-1)  # / torch.mean(pop_fr, dim=1)
-        pop_fr = torch.mean(act, dim=1)
+        stdev_pop_fr = torch.std(act, dim=1)  # / torch.mean(pop_fr, dim=1)
+        pop_fr = torch.mean(act, dim=0)
 
         return self.calc_regloss(stdev_pop_fr)
 
