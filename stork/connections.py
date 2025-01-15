@@ -100,19 +100,18 @@ class StructuredLinear(nn.Module):
         )
 
         # Precompute masked weights initially
-        self.register_buffer("masked_weight", self.weight * self.mask)
+        # self.register_buffer("masked_weight", self.weight * self.mask)
 
     def forward(self, x):
         # Update masked_weight only if weights are updated
-        if self.training:
-            self.masked_weight = self.weight * self.mask
-        return nn.functional.linear(x, self.masked_weight, self.bias)
+        # self.masked_weight = self.weight * self.mask
+        return nn.functional.linear(x, self.weight * self.mask, self.bias)
 
     def create_block_diagonal(self):
         assert (
             self.in_features % self.src_blocks == 0
             and self.out_features % self.dst_blocks == 0
-        ), "Source and destination shapes must be divisible by their respective block sizes"
+        ), "Source and destination shapes must be divisible by their respective block sizes, but they are {} in_features and {} src_blocks, and {} out_features and {} dst_blocks".format(self.in_features, self.src_blocks, self.out_features, self.dst_blocks)
 
         # Number of blocks
         num_blocks = self.in_features // self.src_blocks
@@ -120,6 +119,7 @@ class StructuredLinear(nn.Module):
         # Create one block and repeat to form a block diagonal
         block = torch.ones(self.dst_blocks, self.src_blocks)
         matrix = torch.zeros(self.out_features, self.in_features)
+
         for i in range(num_blocks):
             matrix[
                 i * self.dst_blocks : (i + 1) * self.dst_blocks,
@@ -129,66 +129,66 @@ class StructuredLinear(nn.Module):
         return matrix
 
 
-class StructuredLinearBlocks(nn.Module):
-    def __init__(
-        self,
-        in_features,
-        out_features,
-        src_blocks=None,
-        dst_blocks=None,
-        requires_grad=True,
-        bias=False,
-    ):
-        super(StructuredLinear, self).__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        self.src_blocks = src_blocks
-        self.dst_blocks = dst_blocks
-        self.requires_grad = requires_grad
+# class StructuredLinearBlocks(nn.Module):
+#     def __init__(
+#         self,
+#         in_features,
+#         out_features,
+#         src_blocks=None,
+#         dst_blocks=None,
+#         requires_grad=True,
+#         bias=False,
+#     ):
+#         super(StructuredLinear, self).__init__()
+#         self.in_features = in_features
+#         self.out_features = out_features
+#         self.src_blocks = src_blocks
+#         self.dst_blocks = dst_blocks
+#         self.requires_grad = requires_grad
 
-        # Verify divisibility
-        assert (
-            self.in_features % self.src_blocks == 0
-            and self.out_features % self.dst_blocks == 0
-        ), "Source and destination shapes must be divisible by their respective block sizes"
+#         # Verify divisibility
+#         assert (
+#             self.in_features % self.src_blocks == 0
+#             and self.out_features % self.dst_blocks == 0
+#         ), "Source and destination shapes must be divisible by their respective block sizes"
 
-        # Number of blocks
-        self.num_blocks = self.in_features // self.src_blocks
+#         # Number of blocks
+#         self.num_blocks = self.in_features // self.src_blocks
 
-        # Create trainable blocks and register them as parameters
-        self.blocks = nn.ParameterList(
-            [
-                nn.Parameter(
-                    torch.randn(
-                        self.dst_blocks,
-                        self.src_blocks,
-                        requires_grad=self.requires_grad,
-                    )
-                )
-                for _ in range(self.num_blocks)
-            ]
-        )
+#         # Create trainable blocks and register them as parameters
+#         self.blocks = nn.ParameterList(
+#             [
+#                 nn.Parameter(
+#                     torch.randn(
+#                         self.dst_blocks,
+#                         self.src_blocks,
+#                         requires_grad=self.requires_grad,
+#                     )
+#                 )
+#                 for _ in range(self.num_blocks)
+#             ]
+#         )
 
-        # Optional bias
-        self.bias = (
-            nn.Parameter(torch.zeros(out_features), requires_grad=requires_grad)
-            if bias
-            else None
-        )
+#         # Optional bias
+#         self.bias = (
+#             nn.Parameter(torch.zeros(out_features), requires_grad=requires_grad)
+#             if bias
+#             else None
+#         )
 
-    def forward(self, x):
-        # Initialize the weight matrix
-        weight = torch.zeros(self.out_features, self.in_features, device=x.device)
+#     def forward(self, x):
+#         # Initialize the weight matrix
+#         weight = torch.zeros(self.out_features, self.in_features, device=x.device)
 
-        # Populate weight matrix using the block parameters
-        for i, block in enumerate(self.blocks):
-            weight[
-                i * self.dst_blocks : (i + 1) * self.dst_blocks,
-                i * self.src_blocks : (i + 1) * self.src_blocks,
-            ] = block
+#         # Populate weight matrix using the block parameters
+#         for i, block in enumerate(self.blocks):
+#             weight[
+#                 i * self.dst_blocks : (i + 1) * self.dst_blocks,
+#                 i * self.src_blocks : (i + 1) * self.src_blocks,
+#             ] = block
 
-        # Perform the linear operation
-        return nn.functional.linear(x, weight, self.bias)
+#         # Perform the linear operation
+#         return nn.functional.linear(x, weight, self.bias)
 
 
 class Connection(BaseConnection):
