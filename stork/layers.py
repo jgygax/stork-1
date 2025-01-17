@@ -250,6 +250,9 @@ class DalianLayer(AbstractLayer):
         rec_inh_connection_kwargs={},
         rec_exc_connection_kwargs={},
         activation=activations.SuperSpike,
+        mask = None
+
+
     ) -> None:
         super().__init__(name, model, recurrent=recurrent, dalian=True)
 
@@ -265,6 +268,37 @@ class DalianLayer(AbstractLayer):
             size_inh = int(size / ei_ratio)
 
         size = tuple(size) if isinstance(size, Iterable) else size
+
+        # cut mask in parts for each connection
+        if mask is not None:
+            if isinstance(size, Iterable):
+                raise NotImplementedError("Masking is not implemented for Convolutional layers")
+            elif mask.shape[0] != size + size_inh:
+                raise ValueError("Mask shape does not match the size of the layer")
+            else:
+                print(size, size_inh)
+                print(mask.shape)
+                mask_ee = mask[:size, :size]
+                mask_ie = mask[:size, size:]
+                mask_ei = mask[size:, :size]
+                mask_ii = mask[size:, size:]
+
+
+                print(mask_ee.shape, mask_ei.shape, mask_ie.shape, mask_ii.shape)
+
+                rec_exc_connection_kwargs["src_blocks"] = None
+                rec_exc_connection_kwargs["dst_blocks"] = None
+                rec_inh_connection_kwargs["src_blocks"] = None
+                rec_inh_connection_kwargs["dst_blocks"] = None
+
+                print("mask_ee", mask_ee)
+
+
+        print(rec_exc_connection_kwargs)
+
+
+
+
 
         # Make Exc neuron group
         nodes_exc = neuron_class(
@@ -312,6 +346,9 @@ class DalianLayer(AbstractLayer):
         # RECURRENT CONNECTIONS: INHIBITORY
         # # # # # # # # # # # # # #
 
+        if mask is not None:
+            rec_inh_connection_kwargs["mask"] = mask_ii
+
         con_II = connection_class(
             nodes_inh,
             nodes_inh,
@@ -328,6 +365,9 @@ class DalianLayer(AbstractLayer):
                 "src_blocks"
             ]
 
+        if mask is not None:
+            rec_inh_connection_kwargs["mask"] = mask_ie
+
         con_IE = connection_class(
             nodes_inh,
             nodes_exc,
@@ -343,6 +383,10 @@ class DalianLayer(AbstractLayer):
         # # # # # # # # # # # # # #
 
         if recurrent:
+
+            if mask is not None:
+                rec_exc_connection_kwargs["mask"] = mask_ee
+
             con_EE = connection_class(
                 nodes_exc,
                 nodes_exc,
@@ -357,6 +401,9 @@ class DalianLayer(AbstractLayer):
                 rec_exc_connection_kwargs["dst_blocks"] = rec_inh_connection_kwargs[
                     "src_blocks"
                 ]
+
+            if mask is not None:
+                rec_exc_connection_kwargs["mask"] = mask_ei
 
             con_EI = connection_class(
                 nodes_exc,
