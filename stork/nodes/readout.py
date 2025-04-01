@@ -13,8 +13,20 @@ class ReadoutGroup(CellGroup):
         weight_scale=1.0,
         initial_state=-1e-3,
         stateful=False,
+        name="Readout",
+        dropout_p=0.0,
+        regularizers=None,
+        **kwargs
     ):
-        super().__init__(shape, stateful=stateful, name="Readout")
+        super().__init__(
+            shape,
+            dropout_p=dropout_p,
+            stateful=stateful,
+            name=name,
+            regularizers=regularizers,
+            **kwargs
+        )
+
         self.tau_mem = tau_mem
         self.tau_syn = tau_syn
         self.store_output_seq = True
