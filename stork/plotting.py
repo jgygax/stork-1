@@ -298,7 +298,7 @@ def plot_activity_snapshot(
     print("plotting snapshot")
 
     # Run model once and get activities
-    scores = model.evaluate(data, one_batch=True).tolist()
+    scores = model.evaluate(data, two_batches=True).tolist()
 
     inp = model.input_group.get_flattened_out_sequence().detach().cpu().numpy()
     hidden_groups = model.groups[1:-1]
@@ -651,11 +651,10 @@ def plot_classifying_autoencoder_activity(
     point_alpha=1,
     pos=(0, -1),
     off=(0, -0.05),
-    batch_size=None
+    batch_size=None,
 ):
 
     print("plotting snapshot")
-
 
     if data is not None:
         labels = [l for d, (d, l) in data]
@@ -706,7 +705,7 @@ def plot_classifying_autoencoder_activity(
     for i in range(nb_samples):
         # plot and color input spikes
         for idx, inp in enumerate(inps):
-            c = pal[labels[i+batch_size]]
+            c = pal[labels[i + batch_size]]
             ax[-1][i].scatter(
                 np.where(inp[i])[0],
                 np.where(inp[i])[1],
@@ -760,7 +759,7 @@ def plot_classifying_autoencoder_activity(
         )
 
         for line_index, ro_line in enumerate(np.transpose(out_cl[i])):
-            if line_index == labels[i+batch_size]:
+            if line_index == labels[i + batch_size]:
                 ax[0][i].plot(ro_line, color=pal[line_index])
             else:
                 ax[0][i].plot(ro_line, color=bg_col, zorder=-5, alpha=0.5)
@@ -1084,7 +1083,6 @@ def plot_input(
     return fig
 
 
-
 def plot_activity_CST(
     model,
     data,
@@ -1165,9 +1163,7 @@ def plot_activity_CST(
 
         for line_index, ro_line in enumerate(np.transpose(out_group[i])):
             ax[line_index][i].plot(
-                labels[i][:, line_index],
-                color="crimson",
-                label="label"
+                labels[i][:, line_index], color="crimson", label="label"
             )
             ax[line_index][i].plot(ro_line, color="k", alpha=0.5, label="ro")
             if turn_ro_axis_off:
@@ -1184,5 +1180,3 @@ def plot_activity_CST(
     ax[0][0].set_ylabel(f"$v_X$")
     ax[1][0].set_ylabel(f"$v_Y$")
     plt.tight_layout()
-
-
