@@ -564,7 +564,7 @@ class FluctuationDrivenExponentialInitializer(FluctuationDrivenNormalInitializer
             alpha = self.alpha
 
             delta_REC = np.sqrt(
-                (alpha * N_total_exc_rec) / (N_total_exc_ff - alpha * N_total_exc_ff)
+                (alpha * N_total_exc_rec) / ((1 - alpha) * N_total_exc_ff)
             )
             delta_EI = (delta_REC * ebar_inh * N_total_inh * self.nu) / (
                 delta_REC * ebar_exc * N_total_exc_ff * self.nu
