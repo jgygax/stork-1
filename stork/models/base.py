@@ -284,7 +284,9 @@ class RecurrentSpikingModel(nn.Module):
         self.prepare_data(test_dataset)
         metrics = []
 
-        for i, (local_X, local_y) in enumerate(self.data_generator(test_dataset, shuffle=False)):
+        for i, (local_X, local_y) in enumerate(
+            self.data_generator(test_dataset, shuffle=False)
+        ):
             # evaluate only two batches (if needed for plotting)
             if two_batches and i == 2:
                 break

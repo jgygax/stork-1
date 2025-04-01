@@ -695,6 +695,7 @@ class SpikingDataset(torch.utils.data.Dataset):
     def get_valid(self, times, units):
         """Return only the events that fall inside the input specs."""
 
+
         # Tag spikes which would otherwise fall outside of our self.nb_nb_steps
         idx = (times >= 0) & (times < self.nb_steps)
 
@@ -805,6 +806,7 @@ class RasDataset(SpikingDataset):
             sigma_t=sigma_t,
             time_scale=time_scale,
         )
+
 
         data, labels = dataset
 
