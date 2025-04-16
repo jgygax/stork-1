@@ -346,6 +346,8 @@ class ActivityPlotter(Plotter):
         duration = round(self.model.nb_time_steps * self.model.time_step * 10) / 10
         ax[-1][0].set_xticks([0, self.model.nb_time_steps], [0, duration])
 
+        return fig, ax
+
 
 class CurrentInputActivityPlotter(ActivityPlotter):
     def __init__(self):

@@ -419,6 +419,8 @@ def plot_activity_snapshot(
     ax[0][0].set_ylabel("Readout")
     plt.tight_layout()
 
+    return fig
+
 
 def plot_activity_CST(
     model,
@@ -1014,6 +1016,7 @@ def plot_activity_snapshot_old(
 
     plt.tight_layout()
     sns.despine()
+
 
 
 def plot_input(
