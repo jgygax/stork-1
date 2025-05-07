@@ -251,7 +251,7 @@ class ActivityPlotter(Plotter):
                 ax.plot(ro_line, color=bg_col, zorder=-5, alpha=0.5)
 
         if self.plot_label:
-            ax.plot(label, color=self.label_color)
+            ax.plot(label, color=self.label_color, zorder=-10)
 
         self.turn_axis_off(ax)
 
