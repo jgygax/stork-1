@@ -59,6 +59,7 @@ class BaseConnection(core.NetworkNode):
     def reset_state(self, batchsize):
         pass
 
+
 class StructuredLinear(nn.Module):
     def __init__(
         self,
@@ -74,90 +75,101 @@ class StructuredLinear(nn.Module):
         self.in_features = in_features
         self.out_features = out_features
 
-        # Store block info if provided (small integers, negligible memory)
-        if src_blocks is not None:
+        # Handle mask creation
+        if src_blocks is None:
+            if mask is None:
+                raise ValueError("Either src_blocks or mask must be provided")
+        else:
             self.src_blocks = src_blocks
             self.dst_blocks = dst_blocks
-            # Validate block sizes early to avoid wasted computation
-            if in_features % src_blocks != 0 or out_features % dst_blocks != 0:
-                raise ValueError(
-                    f"Dimensions must be divisible by blocks: {in_features}/{src_blocks}, {out_features}/{dst_blocks}"
-                )
-            # Instead of storing full mask, store indices where mask is 1
-            self.register_buffer("mask_indices", self._compute_mask_indices())
-        elif mask is not None:
-            # If explicit mask is provided, convert to sparse format
-            if mask.shape != (out_features, in_features):
-                raise ValueError(f"Invalid mask shape: {mask.shape}, expected {(out_features, in_features)}")
-            indices = mask.nonzero(as_tuple=True)
-            self.register_buffer("mask_indices", torch.stack(indices))
-        else:
-            raise ValueError("Either src_blocks/dst_blocks or mask must be provided")
+            mask = self.create_block_diagonal()
 
-        # Initialize trainable weights with memory-efficient initialization
+        # Verify mask dimensions
+        if mask.shape != (out_features, in_features):
+            raise ValueError(
+                f"Mask dimensions must match (out_features, in_features), "
+                f"got {mask.shape} and {(out_features, in_features)}"
+            )
+
+        # self.mask = mask
+        # Register mask as a buffer (not a parameter)
+        self.register_buffer("mask", mask)
+
+        # Initialize trainable weights and optional bias
         self.weight = nn.Parameter(
-            torch.ones(out_features, in_features, requires_grad=requires_grad)
+            self.mask
+            * torch.randn(out_features, in_features)
+            / (in_features**0.5),  # Xavier init
+            requires_grad=requires_grad,
         )
 
         if bias:
-            self.bias = nn.Parameter(torch.zeros(out_features), requires_grad=requires_grad)
+            self.bias = nn.Parameter(
+                torch.zeros(out_features), requires_grad=requires_grad
+            )
         else:
-            self.register_parameter('bias', None)
+            self.register_parameter("bias", None)
 
-    def _compute_mask_indices(self):
+    def create_block_diagonal(self):
         """
-        Compute indices where mask is 1 without materializing the full mask.
+        Creates a block diagonal mask matrix based on src_blocks and dst_blocks.
 
         Returns:
-            torch.Tensor: 2xN tensor of [row_indices, col_indices]
+            torch.Tensor: A binary mask tensor with 1s in block diagonal positions.
         """
+        # Validate block sizes
+        if not hasattr(self, "src_blocks") or not hasattr(self, "dst_blocks"):
+            raise AttributeError("src_blocks and dst_blocks must be defined")
+
+        if (
+            self.in_features % self.src_blocks != 0
+            or self.out_features % self.dst_blocks != 0
+        ):
+            raise ValueError(
+                f"Source and destination shapes must be divisible by their respective block sizes. "
+                f"Got {self.in_features} in_features with {self.src_blocks} src_blocks, and "
+                f"{self.out_features} out_features with {self.dst_blocks} dst_blocks"
+            )
+
+        # Calculate number of blocks and create mask more efficiently
         num_blocks = self.in_features // self.src_blocks
-        # Pre-calculate total number of ones in the mask
-        total_ones = num_blocks * self.dst_blocks * self.src_blocks
 
-        # Pre-allocate tensors for row and column indices
-        rows = torch.empty(total_ones, dtype=torch.long)
-        cols = torch.empty(total_ones, dtype=torch.long)
+        # print(num_blocks, self.dst_blocks, self.src_blocks, self.out_features//self.dst_blocks)
 
-        idx = 0
-        for b in range(num_blocks):
-            for i in range(self.dst_blocks):
-                for j in range(self.src_blocks):
-                    rows[idx] = b * self.dst_blocks + i
-                    cols[idx] = b * self.src_blocks + j
-                    idx += 1
+        blocks = [
+            torch.ones(self.dst_blocks, self.src_blocks) for _ in range(num_blocks)
+        ]
+        return torch.block_diag(*blocks)
 
-        return torch.stack([rows, cols])
+        # # Fallback implementation
+        # mask = torch.zeros(self.out_features, self.in_features)
+
+        # # Vectorized implementation for better performance
+        # block_indices = torch.arange(num_blocks)
+        # row_indices = block_indices.unsqueeze(1) * self.dst_blocks + torch.arange(self.dst_blocks).unsqueeze(0)
+        # col_indices = block_indices.unsqueeze(1) * self.src_blocks + torch.arange(self.src_blocks).unsqueeze(0)
+
+        # for i in range(num_blocks):
+        #     rows = row_indices[i].reshape(-1, 1)
+        #     cols = col_indices[i].reshape(1, -1)
+        #     mask[rows, cols] = 1.0
+
+        # return mask
 
     def get_weights(self):
-        """ returns the masked weights """
+        """returns the masked weights"""
         # Create masked weight on-the-fly
-        masked_weight = torch.zeros_like(self.weight)
-        masked_weight[self.mask_indices[0], self.mask_indices[1]] = self.weight[self.mask_indices[0], self.mask_indices[1]]
-
-        return masked_weight
+        return self.weight * self.mask
 
     def forward(self, x):
-        # Create masked weight on-the-fly during forward pass
-        # Use sparse operations for memory efficiency
-        masked_weight = torch.zeros_like(self.weight)
-        masked_weight[self.mask_indices[0], self.mask_indices[1]] = self.weight[self.mask_indices[0], self.mask_indices[1]]
-
-        # Alternative approach for potentially better memory efficiency in some cases:
-        # rows, cols = self.mask_indices
-        # values = self.weight[rows, cols]
-        # masked_weight = torch.sparse_coo_tensor(self.mask_indices, values, self.weight.shape).to_dense()
-
+        # Apply mask during forward pass
+        masked_weight = self.weight * self.mask
         return nn.functional.linear(x, masked_weight, self.bias)
 
     def extra_repr(self):
         """Add interpretable representation for print statements."""
-        if hasattr(self, 'src_blocks'):
-            return f'in_features={self.in_features}, out_features={self.out_features}, ' \
-                   f'src_blocks={self.src_blocks}, dst_blocks={self.dst_blocks}, bias={self.bias is not None}'
-        else:
-            return f'in_features={self.in_features}, out_features={self.out_features}, ' \
-                   f'mask=custom, bias={self.bias is not None}'
+        return f"in_features={self.in_features}, out_features={self.out_features}, bias={self.bias is not None}"
+
 
 # class StructuredLinearBlocks(nn.Module):
 #     def __init__(
