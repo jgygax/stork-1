@@ -417,6 +417,7 @@ class FiringRateReconstructionLoss(LossStack):
 
     def compute_loss(self, output, target):
         """Computes MSQE loss between output and target."""
+        # TODO: review why it does not match the exact firing rate
         out_fr = torch.sum(output, dim=1) / self.duration
         loss_value = self.msqe_loss(out_fr, target)
         self.metrics = [loss_value.detach().cpu().numpy()]

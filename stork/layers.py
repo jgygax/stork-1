@@ -250,9 +250,7 @@ class DalianLayer(AbstractLayer):
         rec_inh_connection_kwargs={},
         rec_exc_connection_kwargs={},
         activation=activations.SuperSpike,
-        mask = None
-
-
+        mask=None,
     ) -> None:
         super().__init__(name, model, recurrent=recurrent, dalian=True)
 
@@ -272,17 +270,20 @@ class DalianLayer(AbstractLayer):
         # cut mask in parts for each connection
         if mask is not None:
             if isinstance(size, Iterable):
-                raise NotImplementedError("Masking is not implemented for Convolutional layers")
+                raise NotImplementedError(
+                    "Masking is not implemented for Convolutional layers"
+                )
             elif mask.shape[0] != size + size_inh:
                 raise ValueError("Mask shape does not match the size of the layer")
             else:
+                print("." * 100)
+                print("using mask")
                 print(size, size_inh)
                 print(mask.shape)
                 mask_ee = mask[:size, :size]
                 mask_ie = mask[:size, size:]
                 mask_ei = mask[size:, :size]
                 mask_ii = mask[size:, size:]
-
 
                 print(mask_ee.shape, mask_ei.shape, mask_ie.shape, mask_ii.shape)
 
@@ -291,14 +292,10 @@ class DalianLayer(AbstractLayer):
                 rec_inh_connection_kwargs["src_blocks"] = None
                 rec_inh_connection_kwargs["dst_blocks"] = None
 
-                print("mask_ee", mask_ee)
-
+                print("mask_ee", mask_ee.requires_grad)
+                print("." * 100)
 
         print(rec_exc_connection_kwargs)
-
-
-
-
 
         # Make Exc neuron group
         nodes_exc = neuron_class(
@@ -321,13 +318,25 @@ class DalianLayer(AbstractLayer):
         self.add_neurons(nodes_inh, inhibitory=True)
 
         # Make afferent connections
+        if "exc" in ff_connection_kwargs:
+            exc_ff_connection_kwargs = ff_connection_kwargs["exc"]
+            inh_ff_connection_kwargs = ff_connection_kwargs["inh"]
+        else:
+            exc_ff_connection_kwargs = inh_ff_connection_kwargs = ff_connection_kwargs
+
+        print(
+            # "Careful: Input is added directly to the membrane of the neurons (for feedforward input). "
+            "Careful: need to change target if you want to add input directly to the membrane"
+        )
+        print(connection_class)
         con_XE = connection_class(
             input_group,
             nodes_exc,
             name="XE",
+            target="exc",
             regularizers=w_regs,
             constraints=pos_constraint,
-            **ff_connection_kwargs,
+            **exc_ff_connection_kwargs,
             flatten_input=flatten_input_layer
         )
         self.add_connection(con_XE, recurrent=False, inhibitory=False)
@@ -336,9 +345,10 @@ class DalianLayer(AbstractLayer):
             input_group,
             nodes_inh,
             name="XI",
+            target="exc",
             regularizers=w_regs,
             constraints=pos_constraint,
-            **ff_connection_kwargs,
+            **inh_ff_connection_kwargs,
             flatten_input=flatten_input_layer
         )
         self.add_connection(con_XI, recurrent=False, inhibitory=False)
@@ -416,8 +426,6 @@ class DalianLayer(AbstractLayer):
             self.add_connection(con_EI, recurrent=True, inhibitory=False)
 
         self.output_group = nodes_exc
-
-
 
 
 class TwoInhDalianLayer(AbstractLayer):
@@ -552,7 +560,6 @@ class TwoInhDalianLayer(AbstractLayer):
             **rec_inh_connection_kwargs
         )
         self.add_connection(con_II2, recurrent=False, inhibitory=True)
-
 
         con_IE = connection_class(
             nodes_inh,
