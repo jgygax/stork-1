@@ -18,6 +18,7 @@ class ExcInhLIFGroup(CellGroup):
         **kwargs
     ):
         super(ExcInhLIFGroup, self).__init__(shape, **kwargs)
+        self.act_fn = activation  # added activation as an attribute
         self.spk_nl = activation.apply
         self.tau_mem = tau_mem
         self.tau_exc = tau_exc
@@ -89,6 +90,69 @@ class ExcInhLIFGroup(CellGroup):
         self.syni = self.states["syni"] = new_syni
 
 
+# class ExcInhDeltaLIFGroup(CellGroup):
+#     def __init__(
+#         self,
+#         shape,
+#         tau_mem=10e-3,
+#         sigma_tau=0.0,
+#         activation=activations.SuperSpike,
+#         **kwargs
+#     ):
+#         super(ExcInhDeltaLIFGroup, self).__init__(shape, **kwargs)
+#         self.act_fn = activation  # added activation as an attribute
+#         self.spk_nl = activation.apply
+#         self.tau_mem = tau_mem
+#         self.thr = 1.0
+#         self.sigma_tau = sigma_tau
+
+#         self.mem = None
+#         self.out = None
+#         self.exc = None
+#         self.inh = None
+#         self.default_target = "exc"
+
+#     def configure(self, batch_size, nb_steps, time_step, device, dtype):
+#         super().configure(batch_size, nb_steps, time_step, device, dtype)
+#         tau_mem = torch.tensor(self.tau_mem, dtype=dtype).to(device)
+#         if self.sigma_tau:
+#             tau_mem = tau_mem * torch.exp(
+#                 self.sigma_tau * torch.randn(self.shape, dtype=dtype).to(device)
+#             )
+#         self.dcy_mem = torch.exp(-time_step / tau_mem)
+#         self.scl_mem = 1.0 - self.dcy_mem
+
+#     def clear_input(self):
+#         # no prev state avoids stateful
+#         self.exc = self.get_state_tensor("exc")
+#         self.inh = self.get_state_tensor("inh")
+
+#     def reset_state(self, batch_size=None):
+#         super().reset_state(batch_size)
+#         self.mem = self.get_state_tensor("mem", state=self.mem)
+#         self.out = self.get_state_tensor("out", state=self.out)
+
+#     def get_spike_and_reset(self, mem):
+#         out = self.spk_nl(mem - self.thr)
+#         rst = out.detach()
+#         return out, rst
+
+#     def forward(self):
+#         # spike & reset
+#         new_out, rst = self.get_spike_and_reset(self.mem)
+
+#         net_input_current = self.exc - self.inh
+#         self.set_state_tensor("net_input_current", net_input_current)
+
+#         # synaptic & membrane dynamics
+#         new_mem = (self.dcy_mem * self.mem + self.scl_mem * (net_input_current)) * (
+#             1.0 - rst
+#         )
+
+#         self.out = self.states["out"] = new_out
+#         self.mem = self.states["mem"] = new_mem
+
+
 class ExcInhAdaptiveLIFGroup(CellGroup):
     def __init__(
         self,
@@ -99,10 +163,12 @@ class ExcInhAdaptiveLIFGroup(CellGroup):
         tau_adapt=100e-3,
         adapt_a=0.5,
         sigma_tau=0.0,
+        activation=activations.SuperSpike,
         **kwargs
     ):
         super(ExcInhAdaptiveLIFGroup, self).__init__(shape, **kwargs)
-        self.spk_nl = activations.SuperSpike.apply
+        self.act_fn = activation  # added activation as an attribute
+        self.spk_nl = activation.apply
         self.tau_mem = tau_mem
         self.tau_exc = tau_exc
         self.tau_inh = tau_inh

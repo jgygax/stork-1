@@ -234,13 +234,15 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
         )
         return ["%s%s%s" % (prefix, k, postfix) for k in metric_names]
 
-    def evaluate(self, dataset, train_mode=False, one_batch=False):
+    def evaluate(self, dataset, train_mode=False, two_batches=False):
         self.train(train_mode)
         # self.prepare_data(test_dataset)
         metrics = []
-        for local_X, (local_y_AE, local_y_class) in self.data_generator(
-            dataset, shuffle=False
+        for i, (local_X, (local_y_AE, local_y_class)) in enumerate(
+            self.data_generator(dataset, shuffle=False)
         ):
+            if two_batches and i == 2:
+                break
 
             output_AE, output_class = self.forward_pass(
                 local_X, cur_batch_size=len(local_X)
@@ -259,7 +261,5 @@ class DoubleLossRecSpikingModel(RecurrentSpikingModel):
                 + self.loss_AE.metrics
                 + self.loss_class.metrics
             )
-            if one_batch:
-                break
 
         return np.mean(np.array(metrics), axis=0)

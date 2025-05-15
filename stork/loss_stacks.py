@@ -417,6 +417,7 @@ class FiringRateReconstructionLoss(LossStack):
 
     def compute_loss(self, output, target):
         """Computes MSQE loss between output and target."""
+        # TODO: review why it does not match the exact firing rate
         out_fr = torch.sum(output, dim=1) / self.duration
         loss_value = self.msqe_loss(out_fr, target)
         self.metrics = [loss_value.detach().cpu().numpy()]
@@ -437,8 +438,6 @@ class CSTLossStack(LossStack):
         self.density_weighting_func = density_weighting_func
 
     def get_R2(self, pred, target):
-        # Julian Rossbroich
-        # modified july 2024
         """
         Args:
             pred: Predicted series of the model (batch_size * timestep * nb_outputs),
@@ -454,12 +453,10 @@ class CSTLossStack(LossStack):
         sst = torch.sum((target - torch.mean(target, dim=(0, 1))) ** 2, dim=(0, 1))
         r2 = (1 - ssr / sst).detach().cpu().numpy()
 
-        return [float(r2[0].round(3)), float(r2[1].round(3)), float(r2.mean().round(3))]
+        return [float(r2.mean().round(3))]
 
     def get_metric_names(self):
-        # Julian Rossbroich
-        # modified july 2024
-        return ["r2x", "r2y", "r2"]
+        return ["r2"]
 
     def compute_loss(self, output, target):
         """Computes MSQE loss between output and target."""

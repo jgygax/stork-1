@@ -123,3 +123,9 @@ dmypy.json
 
 # Datasets
 data/
+
+
+# Plots and models
+*.svg
+*.png
+*.pt
