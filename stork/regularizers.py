@@ -89,7 +89,7 @@ class LowerBoundL2(ActivityRegularizer):
         reg_loss = self.strength * torch.mean(torch.square(reg))
         return reg_loss
 
-
+# New activity regularizer... TODO: check proper functionality
 class PopStdevRegularizer:
     """Regularize the standard deviation of the population firing rate (for less synchronous activity)."""
 

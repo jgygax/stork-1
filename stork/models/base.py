@@ -8,7 +8,6 @@ import stork.nodes.base
 from stork import generators
 from stork import loss_stacks
 from stork import monitors
-
 import logging
 
 logger = logging.getLogger(__name__)
@@ -58,8 +57,6 @@ class RecurrentSpikingModel(nn.Module):
         scheduler=None,
         scheduler_kwargs=None,
         generator=None,
-        scheduler=None,
-        scheduler_kwargs=None,
         time_step=1e-3,
         wandb=None,
     ):
@@ -139,6 +136,7 @@ class RecurrentSpikingModel(nn.Module):
         saved_state = self.state_dict()
         saved_optimizer = self.optimizer_instance
         saved_scheduler = self.scheduler_instance
+
         self.nb_time_steps = int(self.nb_time_steps * self.time_step / time_step)
         self.configure(
             self.input_group,
@@ -317,6 +315,7 @@ class RecurrentSpikingModel(nn.Module):
             metrics.append(
                 [self.out_loss.item(), self.reg_loss.item()] + self.loss_stack.metrics
             )
+
         return np.mean(np.array(metrics), axis=0)
 
     def regtrain_epoch(self, dataset, shuffle=True):
@@ -343,6 +342,7 @@ class RecurrentSpikingModel(nn.Module):
 
         if self.scheduler_instance is not None:
             self.scheduler_instance.step()
+
         return np.mean(np.array(metrics), axis=0)
 
     def train_epoch(self, dataset, shuffle=True):
@@ -368,8 +368,6 @@ class RecurrentSpikingModel(nn.Module):
         if self.scheduler_instance is not None:
             self.scheduler_instance.step()
 
-        if self.scheduler_instance is not None:
-            self.scheduler_instance.step()
         return np.mean(np.array(metrics), axis=0)
 
     #################################################################################
@@ -467,17 +465,12 @@ class RecurrentSpikingModel(nn.Module):
         self.hist_train = []
         self.hist_valid = []
         self.wall_clock_time = []
-
-        # for every epoch
         for ep in range(nb_epochs):
             t_start = time.time()
-
-            # train
             self.train()
             ret_train = self.train_epoch(dataset)
             self.hist_train.append(ret_train)
 
-            # validate
             self.train(False)
             ret_valid = self.evaluate(valid_dataset)
             self.hist_valid.append(ret_valid)

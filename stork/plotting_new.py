@@ -379,3 +379,58 @@ class CurrentInputActivityPlotter(ActivityPlotter):
         ax.plot(label, color=bg_col)
         ax.plot(data, color=pal[0])
         self.turn_axis_off(ax)
+
+
+def plot_training(
+    results,
+    nb_epochs,
+    epoch_chunks=1,
+    names=[
+        "loss",
+        "r2",
+    ],
+    save_path=None,
+):
+    fig, ax = plt.subplots(
+        1,
+        len(names),
+        figsize=(2.5 * len(names), 2),
+        dpi=150,
+        sharex=True,
+        constrained_layout=True,
+    )
+
+    for i, n in enumerate(names):
+
+        ax[i].plot(results["{}".format(n)], color="black", label="train")
+        ax[i].plot(results["val_{}".format(n)], color="black", alpha=0.5, label="valid")
+
+        try:
+            ax[i].scatter(
+                [nb_epochs * (e + 1) for e in range(epoch_chunks)],
+                results["test_{}".format(n)],
+                color="coral",
+                label="test",
+            )
+        except Exception as e:
+            print(e)
+
+        ax[i].set_ylabel(n)
+
+        if "acc" in n:
+            ax[i].set_ylim(0, 1)
+        if "loss" in n:
+            ax[i].set_yscale("log")
+        if "r2" in n:
+            ax[i].set_ylim(-0.01, 1.01)
+
+        ax[i].set_xlabel("Epochs")
+
+    ax[-1].legend()
+    ax[0].set_xlabel("Epochs")
+
+    sns.despine()
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=250)
+    return fig, ax

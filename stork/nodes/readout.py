@@ -58,6 +58,9 @@ class ReadoutGroup(CellGroup):
         # self.out_seq.append(self.out)
 
 
+####################################################################################################
+# EXPERIMENTAL NEWLY ADDED GROUPS (TODO: still to be tested)
+####################################################################################################
 class DeltaSynapseReadoutGroup(CellGroup):
     def __init__(
         self,

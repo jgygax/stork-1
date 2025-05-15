@@ -1,6 +1,6 @@
 from .base import CellGroup
 from .readout import ReadoutGroup, DeltaSynapseReadoutGroup, EfficientReadoutGroup
-from .special import FanOutGroup, TorchOp, MaxPool1d, MaxPool2d, AverageReadouts
+from .special import FanOutGroup, TorchOp, MaxPool1d, MaxPool2d
 from .input import (
     InputGroup,
     RasInputGroup,
@@ -9,6 +9,7 @@ from .input import (
     PoissonStimulus,
 )
 from .lif import (
+    SimpleLIFGroup,
     LIFGroup,
     AdaptiveLIFGroup,
     AdaptLearnLIFGroup,

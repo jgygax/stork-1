@@ -10,11 +10,12 @@ from . import layers
 from . import loss_stacks
 from . import models
 from . import monitors
+from . import operations
 from . import optimizers
 from . import plotting
+from . import plotting_new
 from . import regularizers
 from . import utils
-from . import plotting_new
 
 __version__ = "0.1.1"
 print("using my stork version - main")
