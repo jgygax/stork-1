@@ -76,7 +76,7 @@ class AbstractLayer:
         self.model.add_group(neurons)
 
 
-class Layer(AbstractLayer):
+class SimpleLayer(AbstractLayer):
     """
     Implements a 'Layer' class that wraps multiple 'nodes' and 'connection' objects
     and adds them to an instance of an nn.Module.
@@ -104,8 +104,6 @@ class Layer(AbstractLayer):
         flatten_input_layer=True,
         neuron_kwargs={},
         connection_kwargs={},
-        ff_connection_kwargs={},
-        rec_connection_kwargs={},
     ) -> None:
         super().__init__(name, model, recurrent)
 
@@ -114,24 +112,19 @@ class Layer(AbstractLayer):
         self.add_neurons(nodes)
 
         # Make afferent connection
-        if len(ff_connection_kwargs) == 0:
-            ff_connection_kwargs = connection_kwargs
-        if len(rec_connection_kwargs) == 0:
-            rec_connection_kwargs = connection_kwargs
-
         con = connection_class(
             input_group,
             nodes,
             regularizers=w_regs,
             flatten_input=flatten_input_layer,
-            **ff_connection_kwargs
+            **connection_kwargs
         )
         self.add_connection(con)
 
         # Make recurrent connection
         if recurrent:
             con = connection_class(
-                src=nodes, dst=nodes, regularizers=w_regs, **rec_connection_kwargs
+                nodes, nodes, regularizers=w_regs, **connection_kwargs
             )
             self.add_connection(con)
 
@@ -219,6 +212,200 @@ class ConvLayer(AbstractLayer):
                 stride=rec_stride,
                 padding=rec_padding,
                 **recurrent_connection_kwargs
+            )
+            self.add_connection(con)
+
+        self.output_group = nodes
+
+
+class SimpleDalianLayer(AbstractLayer):
+    """
+    Implements a fully connected layer following Dale's law.
+    Consists of one Excitatory and one Inhibitory population
+    """
+
+    def __init__(
+        self,
+        name,
+        model,
+        size,
+        input_group,
+        ei_ratio=4,
+        recurrent=True,
+        regs=None,
+        w_regs=None,
+        connection_class=connections.Connection,
+        neuron_class=nd.ExcInhLIFGroup,
+        flatten_input_layer=True,
+        exc_neuron_kwargs={},
+        inh_neuron_kwargs={},
+        ff_connection_kwargs={},
+        rec_inh_connection_kwargs={},
+        rec_exc_connection_kwargs={},
+    ) -> None:
+        super().__init__(name, model, recurrent=recurrent, dalian=True)
+
+        # Add Dalian constraint
+        pos_constraint = constraints.MinMaxConstraint(min=0.0)
+
+        # Compute inhibitory layer size
+        if isinstance(size, Iterable):
+            # For conv layer
+            size_inh = (int(tuple(size)[0] / ei_ratio),) + tuple(size)[1:]
+        else:
+            # For normal layer
+            size_inh = int(size / ei_ratio)
+
+        size = tuple(size) if isinstance(size, Iterable) else size
+
+        # Make Exc neuron group
+        nodes_exc = neuron_class(
+            size, name=self.name + " exc", regularizers=regs, **exc_neuron_kwargs
+        )
+        self.add_neurons(nodes_exc)
+
+        # Make Inh neuron group
+        nodes_inh = neuron_class(
+            size_inh, name=self.name + " inh", regularizers=regs, **inh_neuron_kwargs
+        )
+        self.add_neurons(nodes_inh, inhibitory=True)
+
+        # Make afferent connections
+        con_XE = connection_class(
+            input_group,
+            nodes_exc,
+            name="XE",
+            regularizers=w_regs,
+            constraints=pos_constraint,
+            **ff_connection_kwargs,
+            flatten_input=flatten_input_layer
+        )
+        self.add_connection(con_XE, recurrent=False, inhibitory=False)
+
+        con_XI = connection_class(
+            input_group,
+            nodes_inh,
+            name="XI",
+            regularizers=w_regs,
+            constraints=pos_constraint,
+            **ff_connection_kwargs,
+            flatten_input=flatten_input_layer
+        )
+        self.add_connection(con_XI, recurrent=False, inhibitory=False)
+
+        # RECURRENT CONNECTIONS: INHIBITORY
+        # # # # # # # # # # # # # #
+
+        con_II = connection_class(
+            nodes_inh,
+            nodes_inh,
+            target="inh",
+            name="II",
+            regularizers=w_regs,
+            constraints=pos_constraint,
+            **rec_inh_connection_kwargs
+        )
+        self.add_connection(con_II, recurrent=False, inhibitory=True)
+
+        con_IE = connection_class(
+            nodes_inh,
+            nodes_exc,
+            target="inh",
+            name="IE",
+            regularizers=w_regs,
+            constraints=pos_constraint,
+            **rec_inh_connection_kwargs
+        )
+        self.add_connection(con_IE, recurrent=False, inhibitory=True)
+
+        # RECURRENT CONNECTIONS: EXCITATORY
+        # # # # # # # # # # # # # #
+
+        if recurrent:
+            con_EI = connection_class(
+                nodes_exc,
+                nodes_inh,
+                name="EI",
+                regularizers=w_regs,
+                constraints=pos_constraint,
+                **rec_exc_connection_kwargs
+            )
+            self.add_connection(con_EI, recurrent=True, inhibitory=False)
+
+            con_EE = connection_class(
+                nodes_exc,
+                nodes_exc,
+                name="EE",
+                regularizers=w_regs,
+                constraints=pos_constraint,
+                **rec_exc_connection_kwargs
+            )
+            self.add_connection(con_EE, recurrent=True, inhibitory=False)
+
+        self.output_group = nodes_exc
+
+
+######################################################################################################
+# TODO: Add complex layer and complex dalian layer (maybe structure into folder with base layer and files with additional layers)
+######################################################################################################
+
+
+class Layer(AbstractLayer):
+    """
+    Implements a 'Layer' class that wraps multiple 'nodes' and 'connection' objects
+    and adds them to an instance of an nn.Module.
+
+    The 'Layer' class fulfills the following purpose:
+        1.  Provide an easy-to-use and easy-to-modify constructor for each layer of a neural network
+        2.  Enable layer-wise initialization strategies. Some initializer classes (in the 'initializers.py') module
+            take a 'Layer' object as input and initialize all connections in the layer.
+
+    The 'Layer' class is only a constructor and does NOT inherit from `nn.Module`, nor does it
+    add a pointer to itself to the model. This could be differently implemented in the future
+    """
+
+    def __init__(
+        self,
+        name,
+        model,
+        size,
+        input_group,
+        recurrent=True,
+        regs=None,
+        w_regs=None,
+        connection_class=connections.Connection,
+        neuron_class=nd.LIFGroup,
+        flatten_input_layer=True,
+        neuron_kwargs={},
+        connection_kwargs={},
+        ff_connection_kwargs={},
+        rec_connection_kwargs={},
+    ) -> None:
+        super().__init__(name, model, recurrent)
+
+        # Make neuron group
+        nodes = neuron_class(size, name=self.name, regularizers=regs, **neuron_kwargs)
+        self.add_neurons(nodes)
+
+        # Make afferent connection
+        if len(ff_connection_kwargs) == 0:
+            ff_connection_kwargs = connection_kwargs
+        if len(rec_connection_kwargs) == 0:
+            rec_connection_kwargs = connection_kwargs
+
+        con = connection_class(
+            input_group,
+            nodes,
+            regularizers=w_regs,
+            flatten_input=flatten_input_layer,
+            **ff_connection_kwargs
+        )
+        self.add_connection(con)
+
+        # Make recurrent connection
+        if recurrent:
+            con = connection_class(
+                src=nodes, dst=nodes, regularizers=w_regs, **rec_connection_kwargs
             )
             self.add_connection(con)
 
