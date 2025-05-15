@@ -17,4 +17,4 @@ from . import utils
 from . import plotting_new
 
 __version__ = "0.1.1"
-print("using my stork version - SG theory")
+print("using my stork version - main")
