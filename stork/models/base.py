@@ -55,6 +55,8 @@ class RecurrentSpikingModel(nn.Module):
         loss_stack=None,
         optimizer=None,
         optimizer_kwargs=None,
+        scheduler=None,
+        scheduler_kwargs=None,
         generator=None,
         scheduler=None,
         scheduler_kwargs=None,
@@ -110,6 +112,24 @@ class RecurrentSpikingModel(nn.Module):
         self.configure_scheduler(self.scheduler_class, self.scheduler_kwargs)
 
         self.to(self.device)
+
+    def set_nb_steps(self, nb_time_steps):
+        self.nb_time_steps = nb_time_steps
+
+        # configure data generator
+        self.data_generator_.configure(
+            self.batch_size,
+            self.nb_time_steps,
+            self.nb_inputs,
+            self.time_step,
+            device=self.device,
+            dtype=self.dtype,
+        )
+
+        for g in self.groups:
+            g.set_nb_steps(nb_time_steps)
+
+        self.reset_states()
 
     def time_rescale(self, time_step=1e-3, batch_size=None):
         """Saves the model then re-configures it with the old hyper parameters, but the new timestep.
@@ -343,6 +363,9 @@ class RecurrentSpikingModel(nn.Module):
 
         if self.scheduler_instance is not None:
             self.scheduler_instance.step()
+
+        if self.scheduler_instance is not None:
+            self.scheduler_instance.step()
         return np.mean(np.array(metrics), axis=0)
 
     #################################################################################
@@ -362,6 +385,13 @@ class RecurrentSpikingModel(nn.Module):
             else:
                 s = s + " {} = {:.3e},".format(name, val)
         return s[:-1]
+
+    def get_metrics_dict(self, metrics_array, prefix="", postfix=""):
+        s = {}
+        names = self.get_metric_names(prefix, postfix)
+        for val, name in zip(metrics_array, names):
+            s[name] = val
+        return s
 
     def get_metrics_history_dict(self, metrics_array, prefix="", postfix=""):
         " Create metrics history dict. " ""
@@ -654,3 +684,32 @@ class RecurrentSpikingModel(nn.Module):
         print("\n## Connections")
         for con in self.connections:
             print(con)
+
+    def set_dtype(self, dtype):
+        self.dtype = dtype
+
+        for g in self.groups:
+            g.set_dtype(dtype)
+        for c in self.connections:
+            c.set_dtype(dtype)
+
+        self.to(self.device)
+        return self
+
+    def half(self):
+        """
+        Convert model to half precision.
+        Because stork does not treat group states as parameters,
+        we have to convert the model to half precision manually.
+        """
+
+        # Convert group states to half precision
+        for group in self.groups:
+            group.half()
+
+        # This will convert parameters to half precision
+        super().half()
+
+        self.set_dtype(torch.float16)
+
+        return self
