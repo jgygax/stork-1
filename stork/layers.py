@@ -325,6 +325,7 @@ class DalianLayer(AbstractLayer):
             exc_ff_connection_kwargs = inh_ff_connection_kwargs = ff_connection_kwargs
 
         print(
+            # "Careful: Input is added directly to the membrane of the neurons (for feedforward input). "
             "Careful: need to change target if you want to add input directly to the membrane"
         )
         print(connection_class)
