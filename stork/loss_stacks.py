@@ -290,7 +290,7 @@ class EveryStepCrossEntropy(LossStack):
 
 
 class MeanSquareError(LossStack):
-    def __init__(self, mask=None):
+    def __init__(self, mask=None, reduction=None):
         """
         Args:
 
@@ -299,19 +299,23 @@ class MeanSquareError(LossStack):
         super().__init__()
         self.msqe_loss = nn.MSELoss()
         self.mask = mask
+        self.reduction = reduction
 
     def get_metric_names(self):
         return []
 
     def compute_loss(self, output, target):
         """Computes MSQE loss between output and target."""
-        if self.mask is None:
-            loss_value = self.msqe_loss(output, target)
-        else:
-            loss_value = self.msqe_loss(
-                output * self.mask.expand_as(output),
-                target * self.mask.expand_as(output),
-            )
+        if self.mask is not None:
+            output = output * self.mask.expand_as(output)
+            target = target * self.mask.expand_as(output)
+
+        if self.reduction == "mean_over_time":
+            output = torch.mean(output, axis=1)
+        elif self.reduction == "last_time":
+            output = output[:, -1]
+
+        loss_value = self.msqe_loss(output, target)
         self.metrics = []
         return loss_value
 
@@ -548,7 +552,6 @@ class CSTHuberLoss(CSTLossStack):
         super().__init__(mask=mask)
         self.loss_fn = nn.SmoothL1Loss(beta=delta)
         self.delta = delta
-
 
 
 class DoubleData_MaxOverTimeCrossEntropy(MaxOverTimeCrossEntropy):

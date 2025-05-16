@@ -529,8 +529,12 @@ def split_dataset(X, y, splits=[0.8, 0.2], shuffle=True):
     if shuffle:
         idx = np.arange(len(X), dtype=np.int_)
         np.random.shuffle(idx)
-        X = X[idx]
-        y = y[idx]
+        try:
+            X = X[idx]
+            y = y[idx]
+        except:
+            X = [X[i] for i in idx]
+            y = [y[i] for i in idx]
 
     start = 0
     sets = []

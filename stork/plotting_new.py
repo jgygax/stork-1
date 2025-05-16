@@ -349,6 +349,26 @@ class ActivityPlotter(Plotter):
         return fig, ax
 
 
+class ReadoutAveraged(ActivityPlotter):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def plot_readout(self, ax, data, label, pal, bg_col):
+        pal = self.label_color
+        if self.tuple_label:
+            label = label[1]
+        for line_index, ro_line in enumerate(np.transpose(data)):
+            ax.plot(ro_line, color=pal[line_index])
+
+            x = ro_line.shape[-1]
+            if self.plot_label:
+                ax.scatter([x], np.mean(ro_line), color=self.bg_col, s=10)
+
+        ax.scatter([x] * len(label), label, color=self.label_color, zorder=-10, s=20)
+
+        self.turn_axis_off(ax)
+
+
 class CurrentInputActivityPlotter(ActivityPlotter):
     def __init__(self):
         super().__init__()
