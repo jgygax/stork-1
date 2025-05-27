@@ -158,6 +158,7 @@ class ActivityPlotter(Plotter):
         scale_spike_rasters=4,
         readout_layers=[-1],
         batch_size=None,
+        scale_input=1,
     ):
         super().__init__()
         self.color_classes = color_classes
@@ -170,6 +171,7 @@ class ActivityPlotter(Plotter):
         self.point_alpha = point_alpha
         self.set_axis = set_axis
         self.batch_size = batch_size
+        self.scale_input = scale_input
 
         self.nb_samples = nb_samples
         self.samples = samples
@@ -207,6 +209,7 @@ class ActivityPlotter(Plotter):
             self.scale_spike_rasters * self.model.groups[g].nb_units / nb_total_units
             for g in range(nb_spiking_groups)
         ] + [1] * len(self.readout_layers)
+        hr[0] *= self.scale_input
         hr = list(reversed(hr))  # since we are plotting from bottom to top
         return hr
 
@@ -274,6 +277,9 @@ class ActivityPlotter(Plotter):
             sharey="row",
             gridspec_kw={"height_ratios": hr},
         )
+
+        if self.nb_samples == 1:
+            ax = np.array([ax]).T
 
         sns.despine()
 
@@ -346,6 +352,10 @@ class ActivityPlotter(Plotter):
         duration = round(self.model.nb_time_steps * self.model.time_step * 10) / 10
         ax[-1][0].set_xticks([0, self.model.nb_time_steps], [0, duration])
 
+        # get ylims of ax[0][0] and set the yticks
+        # ylims = ax[0][0].get_ylim()
+        # ax[0][0].set_yticks([0, 1])
+
         return fig, ax
 
 
@@ -361,12 +371,13 @@ class ReadoutAveraged(ActivityPlotter):
             ax.plot(ro_line, color=pal[line_index])
 
             x = ro_line.shape[-1]
-            if self.plot_label:
-                ax.scatter([x], np.mean(ro_line), color=self.bg_col, s=10)
 
-        ax.scatter([x] * len(label), label, color=self.label_color, zorder=-10, s=20)
+        if self.plot_label:
+            ax.scatter(
+                [x] * len(label), label, color=self.label_color, zorder=-10, s=20
+            )
 
-        self.turn_axis_off(ax)
+        ax.set_xticks([])
 
 
 class CurrentInputActivityPlotter(ActivityPlotter):
