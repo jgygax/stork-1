@@ -69,9 +69,9 @@ class SimpleLIFGroup(CellGroup):
         self.syn = None
 
     def configure(self, batch_size, nb_steps, time_step, device, dtype):
-        self.dcy_mem = float(np.exp(-time_step / self.tau_mem))
+        self.dcy_mem = float(torch.exp(-time_step / self.tau_mem))
         self.scl_mem = 1.0 - self.dcy_mem
-        self.dcy_syn = float(np.exp(-time_step / self.tau_syn))
+        self.dcy_syn = float(torch.exp(-time_step / self.tau_syn))
         self.scl_syn = 1.0 - self.dcy_syn
         if self.learn_timescales:
             mem_param = torch.randn(1, device=device, dtype=dtype, requires_grad=True)
