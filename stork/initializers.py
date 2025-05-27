@@ -292,7 +292,9 @@ class FluctuationDrivenNormalInitializer(Initializer):
         neuron group `dst`
         """
         tau_mem = dst.tau_mem
-        if isinstance(dst, nodes.DeltaSynapseLIFGroup):
+        if isinstance(dst, nodes.DeltaSynapseLIFGroup) or isinstance(
+            dst, nodes.EfficientIFGroup
+        ):
             tau_syn = None
             self.epsilon_calc_mode = "analytical"
         else:
