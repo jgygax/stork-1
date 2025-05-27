@@ -6,7 +6,7 @@ from . import datasets
 from . import generators
 from . import initializers
 from . import nodes
-from . import layers
+from .layers import base
 from . import loss_stacks
 from . import models
 from . import monitors
