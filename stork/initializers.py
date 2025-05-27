@@ -7,7 +7,7 @@ import torch.distributions as dists
 import numpy as np
 
 from . import connections
-from . import layers
+from .layers.base import AbstractLayer
 from . import nodes
 
 from .utils import get_lif_kernel
@@ -78,7 +78,7 @@ class Initializer:
         if isinstance(target, connections.BaseConnection):
             self.initialize_connection(target)
 
-        elif isinstance(target, layers.AbstractLayer):
+        elif isinstance(target, AbstractLayer):
             self.initialize_layer(target)
 
         else:
