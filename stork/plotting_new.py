@@ -184,6 +184,9 @@ class ActivityPlotter(Plotter):
         self.data = data
         self.readout_layers = readout_layers
 
+        nb_groups = len(self.model.groups)
+        self.nb_spiking_groups = nb_groups - len(self.readout_layers)
+
     def get_activities(self):
 
         # Run model once and get activities
@@ -200,14 +203,13 @@ class ActivityPlotter(Plotter):
 
     def get_height_ratios(self):
         nb_groups = len(self.model.groups)
-        nb_spiking_groups = nb_groups - len(self.readout_layers)
 
         nb_total_units = np.sum(
-            [self.model.groups[g].nb_units for g in range(nb_spiking_groups)]
+            [self.model.groups[g].nb_units for g in range(self.nb_spiking_groups)]
         )
         hr = [
             self.scale_spike_rasters * self.model.groups[g].nb_units / nb_total_units
-            for g in range(nb_spiking_groups)
+            for g in range(self.nb_spiking_groups)
         ] + [1] * len(self.readout_layers)
         hr[0] *= self.scale_input
         hr = list(reversed(hr))  # since we are plotting from bottom to top
@@ -264,7 +266,6 @@ class ActivityPlotter(Plotter):
         print("plotting")
         activities = self.get_activities()
         nb_groups = len(self.model.groups)
-        nb_spiking_groups = nb_groups - len(self.readout_layers)
 
         hr = self.get_height_ratios()
 
@@ -303,7 +304,7 @@ class ActivityPlotter(Plotter):
                     c = self.pal[self.data[s + self.batch_size][1][1]]
                     self.tuple_label = True
             else:
-                c = self.bg_col
+                c = "darkgray"
 
             self.plot_input(
                 ax[-1, i],
@@ -313,7 +314,7 @@ class ActivityPlotter(Plotter):
             ax[-1][0].set_ylabel(self.model.groups[0].name)
 
             # plot hidden layer spikes
-            for g in range(1, nb_spiking_groups):
+            for g in range(1, self.nb_spiking_groups):
                 self.plot_hidden(
                     ax[-(1 + g), i],
                     activities[g][s],
@@ -324,7 +325,7 @@ class ActivityPlotter(Plotter):
                     ax[-(1 + g)][i].set_yticks([])
 
             # plot readout
-            for g in range(nb_spiking_groups, nb_groups):
+            for g in range(self.nb_spiking_groups, nb_groups):
                 self.plot_readout(
                     ax[-(1 + g), i],
                     activities[g][s],
@@ -342,7 +343,7 @@ class ActivityPlotter(Plotter):
 
             ax[-1][i].set_xlabel("Time (s)")
 
-        for g in range(nb_spiking_groups, nb_groups):
+        for g in range(self.nb_spiking_groups, nb_groups):
             ax[-(1 + g)][0].set_ylim(ylims[g])
 
         ax[-1][0].set_ylabel("Input")
@@ -378,6 +379,164 @@ class ReadoutAveraged(ActivityPlotter):
             )
 
         ax.set_xticks([])
+
+
+class SplitReadoutPlot(ActivityPlotter):
+    def __init__(self, nb_splits=2, **kwargs):
+        super().__init__(**kwargs)
+        self.nb_splits = nb_splits
+
+    def get_height_ratios(self):
+        nb_groups = len(self.model.groups)
+
+        nb_total_units = np.sum(
+            [self.model.groups[g].nb_units for g in range(self.nb_spiking_groups)]
+        )
+        hr = [
+            self.scale_spike_rasters * self.model.groups[g].nb_units / nb_total_units
+            for g in range(self.nb_spiking_groups)
+        ] + [1] * len(self.readout_layers) * self.nb_splits
+        hr[0] *= self.scale_input
+        hr = list(reversed(hr))  # since we are plotting from bottom to top
+        return hr
+
+    def plot_readout(self, ax, data, label, pal, bg_col):
+        for line_index, ro_line in enumerate(np.transpose(data)):
+            ax.plot(ro_line, color=pal[line_index])
+
+        if self.plot_label:
+            for line_index, label_line in enumerate(np.transpose(label)):
+                ax.plot(
+                    label_line, color=pal[line_index], ls="--", alpha=0.75, zorder=-10
+                )
+
+        self.turn_axis_off(ax)
+
+    def plot_activity(
+        self,
+    ):
+        print("plotting")
+        activities = self.get_activities()
+        nb_groups = len(self.model.groups) + self.nb_splits - 1
+
+        hr = self.get_height_ratios()
+
+        fig, ax = plt.subplots(
+            len(hr),
+            self.nb_samples,
+            figsize=self.figsize,
+            dpi=self.dpi,
+            sharex="row",
+            sharey="row",
+            gridspec_kw={"height_ratios": hr},
+        )
+
+        if self.nb_samples == 1:
+            ax = np.array([ax]).T
+
+        sns.despine()
+
+        if self.samples is None:
+            self.samples = list(range(self.nb_samples))
+
+        ##############################################################################################
+        # Plotting
+        ##############################################################################################
+
+        ylims = {g: (float("inf"), float("-inf")) for g in range(nb_groups)}
+        for i, s in enumerate(self.samples):
+
+            self.tuple_label = False
+
+            # plot and color input spikes
+            if self.color_classes:
+                try:
+                    c = self.pal[self.data[s + self.batch_size][1]]
+                except:
+                    c = self.pal[self.data[s + self.batch_size][1][1]]
+                    self.tuple_label = True
+            else:
+                c = "darkgray"
+
+            self.plot_input(
+                ax[-1, i],
+                activities[0][s],
+                c,
+            )
+            ax[-1][0].set_ylabel(self.model.groups[0].name)
+
+            # plot hidden layer spikes
+            for g in range(1, self.nb_spiking_groups):
+                self.plot_hidden(
+                    ax[-(1 + g), i],
+                    activities[g][s],
+                )
+                ax[-(1 + g)][0].set_ylabel(self.model.groups[g].name)
+
+                if i == 0:
+                    ax[-(1 + g)][i].set_yticks([])
+
+            # plot readout
+            ro_chunk = int(activities[-1][s].shape[1] / self.nb_splits)
+            for split_idx, g in enumerate(range(self.nb_spiking_groups, nb_groups)):
+                self.plot_readout(
+                    ax[-(1 + g), i],
+                    activities[-1][s][
+                        :, split_idx * ro_chunk : (split_idx + 1) * ro_chunk
+                    ],
+                    self.data[s + self.batch_size][1][
+                        :, split_idx * ro_chunk : (split_idx + 1) * ro_chunk
+                    ],
+                    self.pal,
+                    self.bg_col,
+                )
+                if split_idx:
+                    ax[-(1 + g), 0].set_ylabel("Class")
+                ax[-(1 + g), 0].set_ylabel(self.model.groups[-1].name)
+                ax[-(1 + g)][0].set_yticks([])
+
+                ylims[g] = (
+                    min(
+                        ylims[g][0],
+                        min(
+                            np.concatenate(
+                                (
+                                    activities[-1][s].flatten(),
+                                    self.data[s + self.batch_size][1].flatten(),
+                                )
+                            )
+                        ),
+                    ),
+                    max(
+                        ylims[g][1],
+                        max(
+                            np.concatenate(
+                                (
+                                    activities[-1][s].flatten(),
+                                    self.data[s + self.batch_size][1].flatten(),
+                                )
+                            )
+                        ),
+                    ),
+                )
+
+            ax[-1][i].set_xlabel("Time (s)")
+
+        for g in range(self.nb_spiking_groups, nb_groups):
+            ax[-(1 + g)][0].set_ylim(ylims[g])
+
+        ax[-1][0].set_ylabel("Input")
+        ax[-1][0].set_yticks([])
+        ax[-1][0].set_xlim(-3, self.model.nb_time_steps + 3)
+
+        duration = round(self.model.nb_time_steps * self.model.time_step * 10) / 10
+        ax[-1][0].set_xticks([0, self.model.nb_time_steps], [0, duration])
+
+        # get ylims of ax[0][0] and set the yticks
+        # ylims = ax[0][0].get_ylim()
+        # ax[0][0].set_yticks([0, 1])
+
+        return fig, ax
 
 
 class CurrentInputActivityPlotter(ActivityPlotter):
