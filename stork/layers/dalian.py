@@ -5,6 +5,8 @@ from .. import constraints
 from .. import activations
 from typing import Iterable
 
+from .base import AbstractLayer
+
 
 class DalianLayer(AbstractLayer):
     """
@@ -194,8 +196,6 @@ class StructuredDalianLayer(AbstractLayer):
                 raise NotImplementedError(
                     "Masking is not implemented for Convolutional layers"
                 )
-            elif mask.shape[0] != size + size_inh:
-                raise ValueError("Mask shape does not match the size of the layer")
             else:
                 mask_ee = mask[:size, :size]
                 mask_ie = mask[:size, size:]
