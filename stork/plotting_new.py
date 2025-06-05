@@ -624,3 +624,382 @@ def plot_training(
     if save_path is not None:
         fig.savefig(save_path, dpi=250)
     return fig, ax
+
+
+def plot_precise_balance_example_neuron(
+    results,
+    key_exc="Pre test syne-Hid. 1 exc",
+    key_inh="Pre test syni-Hid. 1 exc",
+    idx_neuron=0,
+    thr=None,
+    scaling=True,
+):
+    """
+    Plot a scatter plot of the excitatory and inhibitory synaptic currents for a single neuron at each time step for each stimulus
+    """
+
+    syne = results[key_exc][:, :, idx_neuron].flatten()
+    syni = -results[key_inh][:, :, idx_neuron].flatten()
+
+    if scaling:
+        scl = np.max([np.max(syne), np.max(-syni)])
+        syne = syne / scl
+        syni = syni / scl
+
+    if thr is not None:
+        mask = (syne > thr) | (syni < -thr)
+
+        syne = syne[mask]
+        syni = syni[mask]
+
+    lim = max(np.max(syne), np.max(-syni))
+
+    slope, intercept, r_value, _, _ = linregress(syne, -syni)
+    x = np.linspace(0, 100, 100)
+
+    fig = plt.figure(figsize=(4, 4), dpi=150)
+    plt.scatter(
+        syne,
+        -syni,
+        s=1,
+        color="black",
+        alpha=0.1,
+    )
+    plt.plot([0, 100], [0, 100], color="silver")
+
+    # plot linear fit
+    plt.plot(
+        x,
+        slope * x + intercept,
+        color="red",
+        label=f"y = {slope:.2f}x + {intercept:.2f}\nR² = {r_value**2:.2f}",
+    )
+    plt.legend()
+
+    sns.despine()
+    plt.xlabel("Excitatory synaptic current")
+    plt.ylabel("Inhibitory synaptic current")
+    plt.xlim(-0.01, lim)
+    plt.ylim(-0.01, lim)
+    plt.title(f"Precise balance - Neuron {idx_neuron}")
+
+    return fig
+
+
+def balance_idx(syne, syni, eps=1e-8):
+
+    num = (syni + syne) ** 2
+    denom = (syne - syni) ** 2 + eps
+    return np.mean(num / denom)
+
+
+def avg_precise_balance(
+    results,
+    key_exc="Pre test syne-Hid. 1 exc",
+    key_inh="Pre test syni-Hid. 1 exc",
+    thr=None,
+    nb_exc_neurons=80,
+    scaling=True,
+):
+    """
+    Calculate the precise balance index averaged over all neurons.
+    """
+    precise_balance = []
+
+    all_syne = results[key_exc]
+    all_syni = -results[key_inh]
+
+    if scaling:
+        scl = np.max([np.max(all_syne), np.max(-all_syni)])
+        all_syne = all_syne / scl
+        all_syni = all_syni / scl
+
+    print(balance_idx(all_syne.flatten(), all_syni.flatten()))
+
+    for i in range(nb_exc_neurons):
+        syne = all_syne[:, :, i].flatten()
+        syni = all_syni[:, :, i].flatten()
+
+        if thr is not None:
+
+            mask = (syne > thr) | (syni < -thr)
+
+            syne = syne[mask]
+            syni = syni[mask]
+
+        precise_balance.append(balance_idx(syne, syni))
+
+    return np.mean(precise_balance)
+
+
+# Detailed balance
+def plot_detailed_balance_example_neuron(
+    results,
+    key_exc="Pre test syne-Hid. 1 exc",
+    key_inh="Pre test syni-Hid. 1 exc",
+    idx_neuron=0,
+    scaling=True,
+):
+    """
+    Plot a scatter plot of the mean excitatory and inhibitory synaptic currents for a single neuron.
+    """
+
+    mean_time_syne = results[key_exc][:, :, idx_neuron].mean(axis=1)
+    mean_time_syni = -results[key_inh][:, :, idx_neuron].mean(axis=1)
+
+    if scaling:
+        scl = np.max([np.max(mean_time_syne), np.max(-mean_time_syni)])
+        mean_time_syne = mean_time_syne / scl
+        mean_time_syni = mean_time_syni / scl
+
+    lim = max(np.max(mean_time_syne), np.max(-mean_time_syni)) * 1.1
+
+    slope, intercept, r_value, p_value, std_err = linregress(
+        mean_time_syne, -mean_time_syni
+    )
+    x = np.linspace(0, 100, 100)
+
+    fig = plt.figure(figsize=(4, 4), dpi=150)
+    plt.scatter(
+        mean_time_syne,
+        -mean_time_syni,
+        s=1,
+        color="black",
+        alpha=0.5,
+    )
+    plt.plot([0, 100], [0, 100], color="silver")
+    plt.plot(
+        x,
+        slope * x + intercept,
+        color="red",
+        label=f"y = {slope:.2f}x + {intercept:.2f}\nR² = {r_value**2:.2f}",
+    )
+    plt.legend()
+
+    sns.despine()
+    plt.xlabel("Excitatory synaptic current")
+    plt.ylabel("Inhibitory synaptic current")
+    plt.title(f"Detailed balance - Neuron {idx_neuron}")
+
+    plt.xlim(0, lim)
+    plt.ylim(0, lim)
+
+    return fig
+
+
+def avg_detailed_balance(
+    results,
+    key_exc="Pre test syne-Hid. 1 exc",
+    key_inh="Pre test syni-Hid. 1 exc",
+    nb_exc_neurons=80,
+    scaling=True,
+):
+    """
+    Calculate the detailed balance index averaged over all neurons.
+    """
+    detailed_balance = []
+
+    all_syne = results[key_exc]
+    all_syni = -results[key_inh]
+
+    if scaling:
+        scl = np.max([np.max(all_syne), np.max(-all_syni)])
+        all_syne = all_syne / scl
+        all_syni = all_syni / scl
+
+    for i in range(nb_exc_neurons):
+        syne = all_syne[:, :, i].mean(axis=1)
+        syni = all_syni[:, :, i].mean(axis=1)
+
+        detailed_balance.append(balance_idx(syne, syni))
+
+    return np.mean(detailed_balance)
+
+
+# Tight balance
+def plot_tight_balance_example_neuron(
+    results,
+    key_exc="Pre test syne-Hid. 1 exc",
+    key_inh="Pre test syni-Hid. 1 exc",
+    idx_neuron=0,
+    scaling=True,
+):
+    """
+    Plot a scatter plot of the mean excitatory and inhibitory synaptic currents for a single neuron.
+    """
+
+    mean_stimuli_syne = results[key_exc][:, :, idx_neuron].mean(axis=0)
+    mean_stimuli_syni = -results[key_inh][:, :, idx_neuron].mean(axis=0)
+
+    if scaling:
+        scl = np.max([np.max(mean_stimuli_syne), np.max(-mean_stimuli_syni)])
+        mean_stimuli_syne = mean_stimuli_syne / scl
+        mean_stimuli_syni = mean_stimuli_syni / scl
+
+    lim = max(np.max(mean_stimuli_syne), np.max(-mean_stimuli_syni)) * 1.1
+
+    slope, intercept, r_value, p_value, std_err = linregress(
+        mean_stimuli_syne, -mean_stimuli_syni
+    )
+    x = np.linspace(0, 100, 100)
+
+    fig = plt.figure(figsize=(4, 4), dpi=150)
+    plt.scatter(
+        mean_stimuli_syne,
+        -mean_stimuli_syni,
+        s=1,
+        color="black",
+        alpha=np.arange(0.01, 1, 1 / len(mean_stimuli_syne)),
+    )
+    plt.plot([0, 100], [0, 100], color="silver")
+    plt.plot(
+        x,
+        slope * x + intercept,
+        color="red",
+        label=f"y = {slope:.2f}x + {intercept:.2f}\nR² = {r_value**2:.2f}",
+    )
+    plt.legend()
+
+    sns.despine()
+    plt.title(f"Tight balance - Neuron {idx_neuron}")
+    plt.xlim(0, lim)
+    plt.ylim(0, lim)
+    plt.xlabel("Excitatory synaptic current")
+    plt.ylabel("Inhibitory synaptic current")
+
+    return fig
+
+
+def avg_tight_balance(
+    results,
+    key_exc="Pre test syne-Hid. 1 exc",
+    key_inh="Pre test syni-Hid. 1 exc",
+    nb_exc_neurons=80,
+    scaling=True,
+):
+    """
+    Calculate the detailed balance index averaged over all neurons.
+    """
+
+    all_syne = results[key_exc]
+    all_syni = -results[key_inh]
+
+    if scaling:
+        scl = np.max([np.max(all_syne), np.max(-all_syni)])
+        all_syne = all_syne / scl
+        all_syni = all_syni / scl
+
+    tight_balance = []
+
+    for i in range(nb_exc_neurons):
+        syne = all_syne[:, :, i].mean(axis=0)
+        syni = all_syni[:, :, i].mean(axis=0)
+
+        tight_balance.append(balance_idx(syne, syni))
+
+    return np.mean(tight_balance)
+
+
+# global balance
+
+
+def plot_global_balance(
+    results,
+    key_exc="Pre test syne-Hid. 1 exc",
+    key_inh="Pre test syni-Hid. 1 exc",
+    scaling=True,
+):
+    """
+    Plot a scatter plot of the mean excitatory and inhibitory synaptic currents for all neurons.
+    """
+
+    # Calculate mean excitatory and inhibitory synaptic currents across all neurons
+    mean_syne = np.mean(results[key_exc], axis=(0, 1))
+    mean_syni = np.mean(-results[key_inh], axis=(0, 1))
+
+    if scaling:
+        scl = np.max([np.max(mean_syne), np.max(-mean_syni)])
+        mean_syne = mean_syne / scl
+        mean_syni = mean_syni / scl
+
+    lim = max(np.max(mean_syne), np.max(-mean_syni)) * 1.1
+
+    slope, intercept, r_value, p_value, std_err = linregress(mean_syne, -mean_syni)
+    x = np.linspace(0, 100, 100)
+
+    fig = plt.figure(figsize=(4, 4), dpi=150)
+    plt.scatter(
+        mean_syne,
+        -mean_syni,
+        s=1,
+        color="black",
+        alpha=1,
+    )
+    plt.plot([0, 100], [0, 100], color="silver")
+    plt.plot(
+        x,
+        slope * x + intercept,
+        color="red",
+        label=f"y = {slope:.2f}x + {intercept:.2f}\nR² = {r_value**2:.2f}",
+    )
+    plt.legend()
+
+    sns.despine()
+    plt.xlabel("Excitatory synaptic current")
+    plt.ylabel("Inhibitory synaptic current")
+    plt.title("Global balance")
+    plt.xlim(0, lim)
+    plt.ylim(0, lim)
+
+    return fig
+
+
+def avg_global_balance(
+    results,
+    key_exc="Pre test syne-Hid. 1 exc",
+    key_inh="Pre test syni-Hid. 1 exc",
+    scaling=True,
+):
+    """
+    Calculate the global balance index.
+    """
+    all_syne = results[key_exc]
+    all_syni = -results[key_inh]
+
+    if scaling:
+        scl = np.max([np.max(all_syne), np.max(-all_syni)])
+        all_syne = all_syne / scl
+        all_syni = all_syni / scl
+
+    mean_syne = np.mean(all_syne, axis=(0, 1))
+    mean_syni = np.mean(all_syni, axis=(0, 1))
+
+    return balance_idx(mean_syne, mean_syni)
+
+
+def plot_example_neuron_currents(
+    results,
+    key_exc="Pre test syne-Hid. 1 exc",
+    key_inh="Pre test syni-Hid. 1 exc",
+    idx_neuron=0,
+):
+    """
+    Plot the synaptic currents of a single neuron.
+    """
+    syne = results[key_exc][:, :, idx_neuron]
+    syni = -results[key_inh][:, :, idx_neuron]
+
+    plt.figure(figsize=(4, 2.5), dpi=150)
+    fig = plt.plot(syne.T, color="tab:red", alpha=0.01, label="Exc.")
+    fig = plt.plot(syni.T, color="tab:blue", alpha=0.01, label="Inh.")
+    fig = plt.plot(syne.T + syni.T, color="dimgray", alpha=0.01, label="Diff.")
+
+    fig = plt.plot(syne.mean(axis=0), color="crimson", label="Exc.")
+    fig = plt.plot(syni.mean(axis=0), color="navy", label="Inh.")
+    fig = plt.plot(syne.mean(axis=0) + syni.mean(axis=0), color="black", label="Diff.")
+    sns.despine()
+    plt.xlabel("Time step")
+    plt.ylabel("Synaptic current")
+    plt.title(f"Neuron {idx_neuron}")
+
+    return fig
