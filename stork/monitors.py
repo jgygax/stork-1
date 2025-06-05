@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 
 class Monitor:
@@ -266,56 +267,181 @@ class GradientOutputMonitor(GradientMonitor):
 
 
 class BalanceMonitor(Monitor):
-    """Records the balance index of a neuron group over time.
-    This is only applicable to Dalian groups
+    """Records balance of a neuron group over time
 
     Args:
         group: The group to record from
-        key_exc: The name of the excitatory state
-        key_inh: The name of the inhibitory state
+        key: The name of the state
     """
 
     def __init__(
         self,
         group,
-        key_exc="exc",
-        key_inh="inh",
+        key_exc="syne",
+        key_inh="syni",
+        scaling=True,
         subset=None,
-        eps=1e-10,
-        name="BalanceMonitor",
+        name="StateMonitor",
+        eps=1e-8,
     ):
         super().__init__()
         self.group = group
         self.key_exc = key_exc
         self.key_inh = key_inh
+        self.scaling = scaling
         self.subset = subset
-        self.eps = eps
         self.name = name
+        self.eps = eps  # small value to avoid division by zero
 
     def reset(self):
         self.data_exc = []
         self.data_inh = []
 
+    def get_balance(self, syne, syni):
+        num = (syni - syne) ** 2
+        denom = (syne + syni) ** 2 + self.eps
+        return torch.tensor(num / denom)
+
     def execute(self):
         if self.subset is not None:
-            self.data_exc.append(
-                self.group.states[self.key_exc][:, self.subset].detach().cpu()
-            )
-            self.data_inh.append(
-                self.group.states[self.key_inh][:, self.subset].detach().cpu()
-            )
+            exc = self.group.states[self.key_exc][:, self.subset]
+            inh = self.group.states[self.key_inh][:, self.subset]
         else:
-            self.data_exc.append(self.group.states[self.key_exc].detach().cpu())
-            self.data_inh.append(self.group.states[self.key_inh].detach().cpu())
+            exc = self.group.states[self.key_exc]
+            inh = self.group.states[self.key_inh]
+
+        self.data_exc.append(exc.detach().cpu())
+        self.data_inh.append(inh.detach().cpu())
+
+    def scl_data(self):
+        scl = torch.max(
+            torch.tensor([torch.max(self.data_exc), torch.max(self.data_inh)])
+        )
+        self.data_exc /= scl
+        self.data_inh /= scl
+
+    # abstract method to be implemented by subclasses
+    def get_data(self):
+        pass
+
+
+class PreciseBalanceMonitor(BalanceMonitor):
+    """Records precise balance of a neuron group over time
+
+    Args:
+        group: The group to record from
+        key_exc: The name of the excitatory state
+        key_inh: The name of the inhibitory state
+        scaling: Whether to scale the states
+        subset: A subset of neurons to record from
+        name: The name of the monitor
+        thr: Threshold for balance calculation
+    """
+
+    def __init__(self, thr, **kwargs):
+        super().__init__(**kwargs)
+        self.thr = thr
 
     def get_data(self):
+        self.data_exc = torch.stack(self.data_exc, dim=1)
+        self.data_inh = torch.stack(self.data_inh, dim=1)
 
-        exc = torch.stack(self.data_exc, dim=1)
-        inh = torch.stack(self.data_inh, dim=1)
+        if self.scaling:
+            self.scl_data()
 
-        diff = exc - inh
-        summe = exc + inh
-        return torch.multiply(diff, diff) / (torch.multiply(summe, summe) + self.eps)
+        self.data_exc = self.data_exc.flatten()
+        self.data_inh = self.data_inh.flatten()
+
+        if self.thr is not None:
+            mask = self.data_exc > self.thr & self.data_inh > self.thr
+            self.data_exc = self.data_exc[mask]
+            self.data_inh = self.data_inh[mask]
+
+        return self.get_balance(self.data_exc, self.data_inh)
+
+
+class DetailedBalanceMonitor(BalanceMonitor):
+    """Records detailed balance of a neuron group (averaged over time)
+
+    Args:
+        group: The group to record from
+        key_exc: The name of the excitatory state
+        key_inh: The name of the inhibitory state
+        scaling: Whether to scale the states
+        subset: A subset of neurons to record from
+        name: The name of the monitor
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def get_data(self):
+        self.data_exc = torch.stack(self.data_exc, dim=1)
+        self.data_inh = torch.stack(self.data_inh, dim=1)
+
+        if self.scaling:
+            self.scl_data()
+
+        self.data_exc = self.data_exc.mean(dim=1).flatten()
+        self.data_inh = self.data_inh.mean(dim=1).flatten()
+
+        return self.get_balance(self.data_exc, self.data_inh)
+
+
+class TightBalanceMonitor(BalanceMonitor):
+    """Records tight balance of a neuron group (averaged over stimuli)
+
+    Args:
+        group: The group to record from
+        key_exc: The name of the excitatory state
+        key_inh: The name of the inhibitory state
+        scaling: Whether to scale the states
+        subset: A subset of neurons to record from
+        name: The name of the monitor
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def get_data(self):
+        self.data_exc = torch.stack(self.data_exc, dim=1)
+        self.data_inh = torch.stack(self.data_inh, dim=1)
+
+        if self.scaling:
+            self.scl_data()
+
+        self.data_exc = self.data_exc.mean(dim=0).flatten()
+        self.data_inh = self.data_inh.mean(dim=0).flatten()
+
+        return self.get_balance(self.data_exc, self.data_inh)
+
+
+class GlobalBalanceMonitor(BalanceMonitor):
+    """Records global balance of a neuron group
+
+    Args:
+        group: The group to record from
+        key_exc: The name of the excitatory state
+        key_inh: The name of the inhibitory state
+        scaling: Whether to scale the states
+        subset: A subset of neurons to record from
+        name: The name of the monitor
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def get_data(self):
+        self.data_exc = torch.stack(self.data_exc, dim=1)
+        self.data_inh = torch.stack(self.data_inh, dim=1)
+
+        if self.scaling:
+            self.scl_data()
+
+        self.data_exc = self.data_exc.mean(dim=(0, 1)).flatten()
+        self.data_inh = self.data_inh.mean(dim=(0, 1)).flatten()
+
+        return self.get_balance(self.data_exc, self.data_inh)
 
 
 class StdevPopulationFiringRateMonitor(Monitor):
