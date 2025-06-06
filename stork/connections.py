@@ -99,28 +99,9 @@ class Connection(BaseConnection):
     def configure(self, batch_size, nb_steps, time_step, device, dtype):
         super().configure(batch_size, nb_steps, time_step, device, dtype)
 
-    def add_diagonal_structure(self, width=1.0, ampl=1.0):
-        if not isinstance(self.op, nn.Linear):
-            raise ValueError("Expected op to be nn.Linear to add diagonal structure.")
-        A = np.zeros(self.op.weight.shape)
-        x = np.linspace(0, A.shape[0], A.shape[1])
-        for i in range(len(A)):
-            A[i] = ampl * np.exp(-((x - i) ** 2) / width**2)
-        self.op.weight.data += torch.from_numpy(A)
-
     def get_weights(self):
-        try:
-            return self.op.weight
-        except:
-            # TODO: check this ...
-            weight = torch.zeros(self.op.out_features, self.op.in_features)
-
-            for i, block in enumerate(self.op.blocks):
-                weight[
-                    i * self.op.dst_blocks : (i + 1) * self.op.dst_blocks,
-                    i * self.op.src_blocks : (i + 1) * self.op.src_blocks,
-                ] = block
-            return weight
+        # Todo: maybe rather self.op.get_weights()?
+        return self.op.weight
 
     def get_regularizer_loss(self):
         reg_loss = torch.tensor(0.0, device=self.device)
@@ -145,78 +126,6 @@ class Connection(BaseConnection):
     def apply_constraints(self):
         for const in self.constraints:
             const.apply(self.op.weight)
-
-
-class IdentityConnection(BaseConnection):
-    def __init__(
-        self,
-        src,
-        dst,
-        target=None,
-        bias=False,
-        requires_grad=True,
-        name=None,
-        regularizers=None,
-        constraints=None,
-        tie_weights=None,
-        weight_scale=1.0,
-    ):
-        """Initialize IdentityConnection
-
-        Args:
-            tie_weights (list of int, optional): Tie weights along dims given in list
-            weight_scale (float, optional): Scale everything by this factor. Useful when the connection is used for relaying currents rather than spikes.
-        """
-        super(IdentityConnection, self).__init__(
-            src,
-            dst,
-            name=name,
-            target=target,
-            regularizers=regularizers,
-            constraints=constraints,
-        )
-
-        self.requires_grad = requires_grad
-        self.weight_scale = weight_scale
-        wshp = src.shape
-
-        # Set weights tensor dimension to 1 along tied dimensions
-        if tie_weights is not None:
-            wshp = list(wshp)
-            for d in tie_weights:
-                wshp[d] = 1
-            wshp = tuple(wshp)
-
-        self.weights = Parameter(torch.randn(wshp), requires_grad=requires_grad)
-        if bias:
-            self.bias = Parameter(torch.randn(wshp), requires_grad=requires_grad)
-
-    def get_weights(self):
-        return self.weights
-
-    def get_regularizer_loss(self):
-        reg_loss = torch.tensor(0.0, device=self.device)
-        for reg in self.regularizers:
-            reg_loss += reg(self.get_weights())
-        return reg_loss
-
-    def apply_constraints(self):
-        for const in self.constraints:
-            const.apply(self.weights)
-
-    def forward(self):
-        preact = self.src.out
-        if self.bias is None:
-            self.dst.scale_and_add_to_state(
-                self.weight_scale, self.target, self.weights * preact
-            )
-        else:
-            self.dst.scale_and_add_to_state(
-                self.weight_scale, self.target, self.weights * preact + self.bias
-            )
-
-    def propagate(self):
-        self.forward()
 
 
 class ConvConnection(Connection):
