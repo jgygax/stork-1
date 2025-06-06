@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from stork import datasets
+from scipy.stats import linregress
 
 
 class Plotter:
