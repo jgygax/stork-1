@@ -183,8 +183,15 @@ class StructuredDalianLayer(AbstractLayer):
         else:
             exc_ff_connection_kwargs = inh_ff_connection_kwargs = ff_connection_kwargs
         if "exc" in rec_connection_kwargs:
-            rec_exc_connection_kwargs = rec_connection_kwargs["exc"]
-            rec_inh_connection_kwargs = rec_connection_kwargs["inh"]
+            ee_con_kwargs = rec_connection_kwargs["exc"]
+            ei_con_kwargs = rec_connection_kwargs["exc"]
+            ie_con_kwargs = rec_connection_kwargs["inh"]
+            ii_con_kwargs = rec_connection_kwargs["inh"]
+        elif "ee" in rec_connection_kwargs:
+            ee_con_kwargs = rec_connection_kwargs["ee"]
+            ei_con_kwargs = rec_connection_kwargs["ei"]
+            ie_con_kwargs = rec_connection_kwargs["ie"]
+            ii_con_kwargs = rec_connection_kwargs["ii"]
         else:
             rec_exc_connection_kwargs = rec_inh_connection_kwargs = (
                 rec_connection_kwargs
@@ -261,7 +268,7 @@ class StructuredDalianLayer(AbstractLayer):
         # # # # # # # # # # # # # #
 
         if mask is not None:
-            rec_inh_connection_kwargs["mask"] = mask_ii
+            ii_con_kwargs["mask"] = mask_ii
 
         con_II = connection_class(
             nodes_inh,
@@ -270,12 +277,12 @@ class StructuredDalianLayer(AbstractLayer):
             name="II",
             regularizers=w_regs,
             constraints=pos_constraint,
-            **rec_inh_connection_kwargs
+            **ii_con_kwargs
         )
         self.add_connection(con_II, recurrent=False, inhibitory=True)
 
         if mask is not None:
-            rec_inh_connection_kwargs["mask"] = mask_ie
+            ie_con_kwargs["mask"] = mask_ie
 
         con_IE = connection_class(
             nodes_inh,
@@ -284,7 +291,7 @@ class StructuredDalianLayer(AbstractLayer):
             name="IE",
             regularizers=w_regs,
             constraints=pos_constraint,
-            **rec_inh_connection_kwargs
+            **ie_con_kwargs
         )
         self.add_connection(con_IE, recurrent=False, inhibitory=True)
 
@@ -294,7 +301,7 @@ class StructuredDalianLayer(AbstractLayer):
         if recurrent:
 
             if mask is not None:
-                rec_exc_connection_kwargs["mask"] = mask_ee
+                ee_con_kwargs["mask"] = mask_ee
 
             con_EE = connection_class(
                 nodes_exc,
@@ -302,12 +309,12 @@ class StructuredDalianLayer(AbstractLayer):
                 name="EE",
                 regularizers=w_regs,
                 constraints=pos_constraint,
-                **rec_exc_connection_kwargs
+                **ee_con_kwargs
             )
             self.add_connection(con_EE, recurrent=True, inhibitory=False)
 
             if mask is not None:
-                rec_exc_connection_kwargs["mask"] = mask_ei
+                ei_con_kwargs["mask"] = mask_ei
 
             con_EI = connection_class(
                 nodes_exc,
@@ -315,7 +322,7 @@ class StructuredDalianLayer(AbstractLayer):
                 name="EI",
                 regularizers=w_regs,
                 constraints=pos_constraint,
-                **rec_exc_connection_kwargs
+                **ei_con_kwargs
             )
             self.add_connection(con_EI, recurrent=True, inhibitory=False)
 
