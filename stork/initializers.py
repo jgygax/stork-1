@@ -465,6 +465,19 @@ class FluctuationDrivenExponentialInitializer(FluctuationDrivenNormalInitializer
             **kwargs
         )
 
+    def _apply_sparseness(self, weights):
+        """
+        Applies sparse mask to weight matrix
+        """
+        if self.sparseness < 1.0:
+            x = torch.rand_like(weights)
+            mask = x.le(self.sparseness)
+
+            # apply mask
+            weights.mul_(mask)
+
+        return weights
+
     def _calc_epsilon(self, dst):
         """
         Calculates epsilon_bar and epsilon_hat, the integrals of the PSP kernel from a target
@@ -515,7 +528,6 @@ class FluctuationDrivenExponentialInitializer(FluctuationDrivenNormalInitializer
 
         nb_inh = len(inh_cons)
         nb_exc = len(exc_cons)
-        nb_exc_ff = len(exc_ff_cons)
         nb_exc_rec = len(exc_rec_cons)
 
         # Assert that there is at least one excitatory and one inhibitory connection
@@ -560,14 +572,24 @@ class FluctuationDrivenExponentialInitializer(FluctuationDrivenNormalInitializer
             )
         )
 
+        # downscale the number of input neurons if there is sparseness
+        if self.sparseness < 1:
+            N_total_exc *= self.sparseness
+            N_total_exc_rec *= self.sparseness
+            N_total_exc_ff *= self.sparseness
+            N_total_inh *= self.sparseness
+
         # If there is recurrent excitation, use alpha scaling factor
         if nb_exc_rec >= 1:
 
             alpha = self.alpha
 
-            delta_REC = np.sqrt(
-                (alpha * N_total_exc_rec) / ((1 - alpha) * N_total_exc_ff)
-            )
+            if alpha == 1:
+                delta_REC = np.sqrt(N_total_exc_rec)
+            else:
+                delta_REC = np.sqrt(
+                    (alpha * N_total_exc_rec) / (N_total_exc_ff - alpha * N_total_exc_ff)
+                )
             delta_EI = (delta_REC * ebar_inh * N_total_inh * self.nu) / (
                 delta_REC * ebar_exc * N_total_exc_ff * self.nu
                 + ebar_exc * N_total_exc_rec * self.nu
@@ -620,7 +642,6 @@ class FluctuationDrivenExponentialInitializer(FluctuationDrivenNormalInitializer
 
         # Loop through each population in this layer
         for neurons in layer.neurons:
-
             # Consider all afferents to this population
             # and compute weight parameters for each connection
             weight_params = self._get_weight_parameters_dst(neurons)
